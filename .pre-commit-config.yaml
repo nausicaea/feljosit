@@ -1,5 +1,16 @@
 # Install: uv run --with pre-commit pre-commit install --hook-type pre-commit --hook-type commit-msg
+default_install_hook_types:
+- pre-commit
+- commit-msg
+- pre-push
 repos:
+  - hooks:
+    - id: commitizen
+    - id: commitizen-branch
+      stages:
+      - pre-push
+    repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.20.1
   - repo: local
     hooks:
       - id: ruff-format
@@ -18,8 +29,3 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
-      - id: commitizen
-        name: commitizen check
-        entry: uv run cz check --commit-msg-file
-        language: system
-        stages: [commit-msg]
