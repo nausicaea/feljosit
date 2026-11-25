@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic test data. All names, IBANs and amounts are fictitious. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.04">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>MSG-2026-10-001</MsgId>
+      <CreDtTm>2026-11-01T06:00:00+01:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>STMT-2026-10</Id>
+      <ElctrncSeqNb>10</ElctrncSeqNb>
+      <CreDtTm>2026-11-01T06:00:00+01:00</CreDtTm>
+      <FrToDt><FrDtTm>2026-10-01T00:00:00+02:00</FrDtTm><ToDtTm>2026-10-31T23:59:59+01:00</ToDtTm></FrToDt>
+      <Acct>
+        <Id><IBAN>CH8900235000012345678</IBAN></Id>
+        <Ccy>CHF</Ccy>
+        <Ownr><Nm>Anna Muster</Nm></Ownr>
+      </Acct>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="CHF">1000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-09-30</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="CHF">4250.05</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-10-31</Dt></Dt>
+      </Bal>
+      <Ntry>
+        <Amt Ccy="CHF">2100.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-01</Dt></BookgDt>
+        <ValDt><Dt>2026-10-01</Dt></ValDt>
+        <AcctSvcrRef>20261001-RENT-01</AcctSvcrRef>
+        <BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>ICDT</Cd><SubFmlyCd>AUTT</SubFmlyCd></Fmly></Domn></BkTxCd>
+        <NtryDtls><TxDtls>
+          <Refs><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+          <Amt Ccy="CHF">2100.00</Amt>
+          <CdtDbtInd>DBIT</CdtDbtInd>
+          <RltdPties>
+            <Cdtr><Nm>Immo Beispiel GmbH</Nm></Cdtr>
+            <CdtrAcct><Id><IBAN>CH3880808001234567890</IBAN></Id></CdtrAcct>
+          </RltdPties>
+          <RmtInf><Ustrd>Miete Oktober 2026</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="CHF">412.35</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-05</Dt></BookgDt>
+        <ValDt><Dt>2026-10-05</Dt></ValDt>
+        <AcctSvcrRef>20261005-QR-77</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <Amt Ccy="CHF">412.35</Amt>
+          <CdtDbtInd>DBIT</CdtDbtInd>
+          <RltdPties>
+            <Cdtr><Nm>Krankenkasse Beispiel</Nm></Cdtr>
+            <CdtrAcct><Id><IBAN>CH0430000001234567890</IBAN></Id></CdtrAcct>
+          </RltdPties>
+          <RmtInf><Strd><CdtrRefInf><Tp><CdOrPrtry><Prtry>QRR</Prtry></CdOrPrtry></Tp><Ref>210000000003139471430009017</Ref></CdtrRefInf></Strd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="CHF">87.60</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-10</Dt></BookgDt>
+        <ValDt><Dt>2026-10-09</Dt></ValDt>
+        <AcctSvcrRef>20261010-CARD-3</AcctSvcrRef>
+        <AddtlNtryInf>Debit card payment MIGROS ZUERICH</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="CHF">150.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-15</Dt></BookgDt>
+        <ValDt><Dt>2026-10-15</Dt></ValDt>
+        <AcctSvcrRef>20261015-BATCH-9</AcctSvcrRef>
+        <NtryDtls>
+          <Btch><NbOfTxs>2</NbOfTxs></Btch>
+          <TxDtls>
+            <Refs><AcctSvcrRef>20261015-BATCH-9-1</AcctSvcrRef></Refs>
+            <Amt Ccy="CHF">100.00</Amt>
+            <CdtDbtInd>DBIT</CdtDbtInd>
+            <RltdPties><Cdtr><Nm>Swisscom (Schweiz) AG</Nm></Cdtr></RltdPties>
+            <RmtInf><Ustrd>Rechnung Oktober</Ustrd></RmtInf>
+          </TxDtls>
+          <TxDtls>
+            <Refs><AcctSvcrRef>20261015-BATCH-9-2</AcctSvcrRef></Refs>
+            <Amt Ccy="CHF">50.00</Amt>
+            <CdtDbtInd>DBIT</CdtDbtInd>
+            <RltdPties><Cdtr><Nm>Serafe AG</Nm></Cdtr></RltdPties>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="CHF">500.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-20</Dt></BookgDt>
+        <ValDt><Dt>2026-10-20</Dt></ValDt>
+        <AcctSvcrRef>20261020-TRF-1</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <Amt Ccy="CHF">500.00</Amt>
+          <CdtDbtInd>DBIT</CdtDbtInd>
+          <RltdPties>
+            <Cdtr><Nm>Anna Muster</Nm></Cdtr>
+            <CdtrAcct><Id><IBAN>CH03 0070 0110 0001 2345 6</IBAN></Id></CdtrAcct>
+          </RltdPties>
+          <RmtInf><Ustrd>Sparen</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="CHF">6500.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-10-25</Dt></BookgDt>
+        <ValDt><Dt>2026-10-25</Dt></ValDt>
+        <AcctSvcrRef>20261025-SAL-1</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <Amt Ccy="CHF">6500.00</Amt>
+          <CdtDbtInd>CRDT</CdtDbtInd>
+          <RltdPties>
+            <Dbtr><Nm>Muster AG</Nm></Dbtr>
+            <DbtrAcct><Id><IBAN>CH9300762011623852957</IBAN></Id></DbtrAcct>
+          </RltdPties>
+          <RmtInf><Ustrd>Lohn Oktober 2026</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="CHF">20.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>PDNG</Sts>
+        <BookgDt><Dt>2026-10-31</Dt></BookgDt>
+        <AddtlNtryInf>Pending card payment</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>
