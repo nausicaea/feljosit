@@ -2,6 +2,7 @@
 
 from datetime import date
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -340,3 +341,36 @@ def test_assign_redirect_uses_only_the_parsed_month(client: Client, app: FastAPI
         "/budget/assign", data={**data, "month": "2026-10"}, follow_redirects=False
     )
     assert response.headers["location"] == "/budget?month=2026-10"
+
+
+def test_malformed_statement_values_give_an_error_page_not_500(client: Client) -> None:
+    http, token = client
+    _add_account(http, token, iban="CH89 0023 5000 0123 4567 8")
+    original = fixture_bytes("camt053_v04_private.xml")
+    for old, new in [
+        (b"<BookgDt><Dt>2026-10-", b"<BookgDt><Dt>2026-13-"),
+        (b'Ccy="CHF">', b'Ccy="CHF">1E999999'),
+    ]:
+        assert old in original
+        response = http.post(
+            "/import",
+            data={"csrf_token": token},
+            files={"statement": ("s.xml", original.replace(old, new, 1), "application/xml")},
+        )
+        assert response.status_code == 400, old
+        assert "1E999999" not in response.text
+
+
+def test_only_one_import_at_a_time(client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+    from feljosit.web.routes import imports
+
+    http, token = client
+    monkeypatch.setattr(imports, "IMPORT_WAIT_SECONDS", 0)
+    assert imports._IMPORT_LOCK.acquire()
+    try:
+        text = _import(http, token, "camt053_v04_private.xml")
+    finally:
+        imports._IMPORT_LOCK.release()
+    assert "A different import is in progress" in text
+    _add_account(http, token, iban="CH89 0023 5000 0123 4567 8")
+    assert "7 new transactions" in _import(http, token, "camt053_v04_private.xml")

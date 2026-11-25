@@ -26,7 +26,7 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0002](0002-local-first-web-application.md) | Use a local-first web application in Python | Accepted |
 | [0003](0003-sqlite-data-store.md) | Use SQLite as the data store | Accepted |
 | [0004](0004-money-representation.md) | Keep money as integer minor units | Accepted |
-| [0005](0005-camt053-parsing.md) | Parse camt.053 safely and for all versions | Accepted |
+| [0005](0005-camt053-parsing.md) | Parse camt.053 safely and for all versions | Accepted (ZIP limits superseded by ADR-0014) |
 | [0006](0006-import-deduplication.md) | Prevent duplicate transactions with fingerprints | Accepted |
 | [0007](0007-authentication-and-sessions.md) | Use local accounts and server-side sessions | Accepted |
 | [0008](0008-envelope-budgeting-rules.md) | Use the envelope budgeting rules of YNAB | Accepted |
@@ -35,3 +35,5 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0011](0011-development-workflow.md) | Use conventional commits, CI and Renovate | Accepted (Renovate part superseded by ADR-0012) |
 | [0012](0012-renovate-best-practices-and-pinning.md) | Use the Renovate best practices, pin all dependencies and wait 7 days | Accepted |
 | [0013](0013-use-uv-for-project-management.md) | Use uv for project and dependency management | Accepted |
+| [0014](0014-xml-resource-limits.md) | Limit the resources that one camt.053 import can use | Proposed |
+| [0015](0015-no-application-level-encryption.md) | Do not encrypt the data in the application | Rejected |

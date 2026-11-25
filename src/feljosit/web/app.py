@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import Engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from feljosit.camt053 import MIN_EXPAT_VERSION, expat_is_patched
 from feljosit.config import Settings
 from feljosit.db import make_engine, make_session_factory, migrate
 from feljosit.services.errors import NotFoundError
@@ -31,6 +32,12 @@ FORM_OVERHEAD_BYTES = 64 * 1024
 
 def create_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
     """Make the application. Upgrade the database schema first."""
+    if not expat_is_patched():
+        log.warning(
+            "The libexpat of this Python is older than %s. Update Python to get the "
+            "XML security fixes.",
+            ".".join(map(str, MIN_EXPAT_VERSION)),
+        )
     engine = engine or make_engine(settings)
     migrate(engine, settings)
 

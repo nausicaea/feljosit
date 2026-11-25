@@ -22,7 +22,9 @@ A summary:
 - All forms have CSRF tokens. The server checks the `Origin` and the `Host` headers.
 - A strict Content Security Policy permits no inline scripts and no external sources.
 - The XML parser refuses DTDs and entities (XXE and "billion laughs" protection).
-- ZIP files and uploads have size limits.
+- The XML parser limits the number of elements, the nesting depth and the attributes.
+- Amounts in a statement must have a strict decimal syntax. Error messages do not show values from the file.
+- ZIP files and uploads have size limits. Only one import runs at a time.
 - The database file has mode `0600`.
 
 ## Recommendations for operators
@@ -33,3 +35,4 @@ A summary:
    Then set `FELJOSIT_SECURE_COOKIES=true` and `FELJOSIT_ALLOWED_HOSTS`.
 4. Encrypt the backups.
 5. Update the application regularly.
+6. Use a Python with libexpat 2.7.2 or later. The application writes a warning if the version is older.
