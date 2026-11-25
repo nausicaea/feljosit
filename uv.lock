@@ -634,27 +634,27 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "alembic", specifier = ">=1.20.1" },
-    { name = "argon2-cffi", specifier = ">=25.1.0" },
-    { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "fastapi", specifier = ">=0.165.0" },
-    { name = "itsdangerous", specifier = ">=2.2.0" },
-    { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "python-multipart", specifier = ">=0.0.34" },
-    { name = "sqlalchemy", specifier = ">=2.1.9" },
-    { name = "uvicorn", specifier = ">=0.54.0" },
+    { name = "alembic", specifier = "==1.20.1" },
+    { name = "argon2-cffi", specifier = "==25.1.0" },
+    { name = "defusedxml", specifier = "==0.7.1" },
+    { name = "fastapi", specifier = "==0.165.0" },
+    { name = "itsdangerous", specifier = "==2.2.0" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "python-multipart", specifier = "==0.0.34" },
+    { name = "sqlalchemy", specifier = "==2.1.9" },
+    { name = "uvicorn", specifier = "==0.54.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "commitizen", specifier = ">=4.20.1" },
-    { name = "httpx2", specifier = ">=2.16.2" },
-    { name = "mypy", specifier = ">=2.4.1" },
-    { name = "pip-audit", specifier = ">=2.10.1" },
-    { name = "pytest", specifier = ">=9.2.0" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "ruff", specifier = ">=0.17.6" },
-    { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },
+    { name = "commitizen", specifier = "==4.20.1" },
+    { name = "httpx2", specifier = "==2.16.2" },
+    { name = "mypy", specifier = "==2.4.1" },
+    { name = "pip-audit", specifier = "==2.10.1" },
+    { name = "pytest", specifier = "==9.2.0" },
+    { name = "pytest-cov", specifier = "==7.1.0" },
+    { name = "ruff", specifier = "==0.17.6" },
+    { name = "types-defusedxml", specifier = "==0.7.0.20260504" },
 ]
 
 [[package]]
