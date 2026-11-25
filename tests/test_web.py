@@ -178,6 +178,16 @@ def test_full_flow_import_categorise_budget_reports(client: Client, app: FastAPI
     assert "Muster AG" in http.get("/transactions?q=muster").text
 
 
+def test_transaction_filter_form_with_empty_account(client: Client) -> None:
+    """The filter form sends ``account=`` for "All accounts"; this must not give 422."""
+    http, token = client
+    _import(http, token, "camt053_v04_private.xml")
+    response = http.get("/transactions?account=&q=&uncategorised=true")
+    assert response.status_code == 200
+    assert http.get("/transactions?account=&category=").status_code == 200
+    assert http.get("/transactions?account=abc").status_code == 422
+
+
 def test_import_errors_are_shown(client: Client) -> None:
     http, token = client
     response = http.post(

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import getpass
 import logging
 import os
 import sys
 from collections.abc import Sequence
+from typing import Any
 
 import uvicorn
 from sqlalchemy import Engine, select
@@ -40,6 +42,17 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _log_config() -> dict[str, Any]:
+    """Return the uvicorn logging configuration with all handlers on stderr.
+
+    By default, uvicorn writes the access log to stdout.
+    """
+    config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    for handler in config["handlers"].values():
+        handler["stream"] = "ext://sys.stderr"
+    return config
+
+
 def _read_password() -> str:
     first = getpass.getpass("Password: ")
     second = getpass.getpass("Password (again): ")
@@ -66,7 +79,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         app = create_app(settings)
         try:
-            uvicorn.run(app, host=host, port=port, server_header=False, proxy_headers=False)
+            uvicorn.run(
+                app,
+                host=host,
+                port=port,
+                server_header=False,
+                proxy_headers=False,
+                log_config=_log_config(),
+            )
         finally:
             app.state.engine.dispose()
         return 0
