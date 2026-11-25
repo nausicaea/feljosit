@@ -22,6 +22,9 @@ The project has these requirements:
 
 ## Options
 
+We examined the documentation and the source code of the current versions on
+2026-11-25: uv, Hatch 1.18.2, Poetry 2.5.2 and Renovate.
+
 ### 1. uv
 
 `uv` installs Python, makes the virtual environment, locks, installs, runs
@@ -49,8 +52,15 @@ builds the package (`hatchling`).
 - Good: It has a good environment matrix, for example tests on more than one
   Python version.
 - Good: It uses PEP 621 metadata.
-- Bad: It has no lock file of its own. Reproducible builds need an additional
-  tool. This does not satisfy requirement 1 with one tool.
+- Good: Since Hatch 1.17.0 (May 2026), it makes standard PEP 751 lock files
+  (`pylock.toml`) with exact versions and hashes.
+- Bad: Locking is new and optional. You must enable it for each environment
+  (`locked = true`) or for all environments (`lock-envs = true`).
+- Bad: The default `pip` locker cannot apply a lock file (`hatch dep sync`).
+  For this, Hatch needs the `uv` locker. Thus a complete locked workflow with
+  Hatch also needs `uv`.
+- Bad: Renovate does not update `pylock.toml` files. Thus Renovate cannot do
+  lock file maintenance. This does not satisfy requirement 2.
 
 ### 3. Poetry
 
@@ -62,8 +72,8 @@ the package (`poetry-core`).
 - Good: Since Poetry 2, it can use PEP 621 metadata.
 - Bad: Older Poetry versions used their own `[tool.poetry]` format. Much
   documentation and many examples still use this format.
-- Bad: It does not install Python itself in the usual workflow. An
-  additional tool (for example `pyenv`) is frequently necessary.
+- Bad: Python installation (`poetry python install`, since Poetry 2.1) is
+  still experimental. An additional tool (for example `pyenv`) is frequently necessary.
 - Bad: It is slower than `uv`, both for locking and for installation.
 
 ### 4. setuptools with pip
@@ -83,6 +93,10 @@ the package (`poetry-core`).
 
 We use `uv` (option 1). It is the only option that satisfies all five
 requirements with one tool.
+
+Hatch is the strongest alternative, because it is a PyPA project and now has
+standard lock files. We will examine it again when Renovate supports
+`pylock.toml` and when Hatch locking is mature.
 
 We decrease the risk of the company dependency:
 
