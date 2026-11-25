@@ -1,6 +1,6 @@
 [project]
 name = "feljosit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first personal budgeting for the Swiss financial sector, with ISO 20022 camt.053 import."
 readme = "README.md"
 requires-python = ">=3.13"
