@@ -32,4 +32,5 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0008](0008-envelope-budgeting-rules.md) | Use the envelope budgeting rules of YNAB | Accepted |
 | [0009](0009-categorisation.md) | Categorise with rules and history, without regular expressions | Accepted |
 | [0010](0010-server-side-charts.md) | Make the charts on the server as SVG | Accepted |
-| [0011](0011-development-workflow.md) | Use conventional commits, CI and Renovate | Accepted |
+| [0011](0011-development-workflow.md) | Use conventional commits, CI and Renovate | Accepted (Renovate part superseded by ADR-0012) |
+| [0012](0012-renovate-best-practices-and-pinning.md) | Use the Renovate best practices, pin all dependencies and wait 7 days | Accepted |

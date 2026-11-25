@@ -35,7 +35,7 @@ boundaries, the threats and the controls.
 | Denial of service | "Billion laughs" or ZIP bomb | Entities refused, ZIP limits, upload limit of 10 MB. |
 | Denial of service | ReDoS in categorisation rules | Rules use text comparison, not regular expressions. |
 | Elevation of privilege | Open redirect | Redirect targets must be local paths. |
-| Supply chain | A compromised dependency | `uv.lock`, pinned action SHAs, Renovate with 3-day delay, `pip-audit`, CodeQL. |
+| Supply chain | A compromised dependency | Exact versions in `pyproject.toml` and `uv.lock`, pinned action SHAs, Renovate with 7-day delay (ADR-0012), `pip-audit`, CodeQL. |
 
 ## Residual risks
 

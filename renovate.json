@@ -1,15 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
+    "config:best-practices",
+    ":pinAllExceptPeerDependencies",
     ":semanticCommits",
-    ":semanticCommitTypeAll(chore)",
-    "helpers:pinGitHubActionDigests",
-    ":maintainLockFilesWeekly"
+    ":semanticCommitTypeAll(chore)"
   ],
   "schedule": ["before 6am on monday"],
   "timezone": "Europe/Zurich",
-  "minimumReleaseAge": "3 days",
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
   "vulnerabilityAlerts": {
     "enabled": true,
     "labels": ["security"],
@@ -17,8 +17,12 @@
     "minimumReleaseAge": null
   },
   "osvVulnerabilityAlerts": true,
-  "lockFileMaintenance": { "enabled": true },
   "packageRules": [
+    {
+      "description": "Keep the Python version as a range. Do not pin it to one release.",
+      "matchDepTypes": ["requires-python"],
+      "rangeStrategy": "auto"
+    },
     {
       "description": "Group the development tools.",
       "matchDepTypes": ["dependency-groups"],
