@@ -1,6 +1,8 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
+import uvicorn
 
 from feljosit import cli
 
@@ -44,3 +46,13 @@ def test_serve_warns_on_public_address(
     assert cli.main(["serve", "--host", "0.0.0.0", "--port", "9000"]) == 0  # noqa: S104
     assert calls == [("0.0.0.0", 9000)]  # noqa: S104
     assert "WARNING" in capsys.readouterr().err
+
+
+def test_serve_sends_all_logs_to_stderr(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    configs: list[dict[str, Any]] = []
+    monkeypatch.setattr("uvicorn.run", lambda _app, log_config, **_kw: configs.append(log_config))
+    assert cli.main(["serve"]) == 0
+    streams = {h["stream"] for h in configs[0]["handlers"].values()}
+    assert streams == {"ext://sys.stderr"}
+    # The uvicorn default configuration is not changed.
+    assert uvicorn.config.LOGGING_CONFIG["handlers"]["access"]["stream"] == "ext://sys.stdout"

@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from pydantic import BeforeValidator
 from sqlalchemy import func, or_, select
 
 from feljosit.models import Account, CategoryGroup, Transaction, TransactionSource
@@ -19,6 +20,17 @@ from feljosit.web.rendering import render
 
 router = APIRouter()
 PAGE_SIZE = 100
+
+
+def _empty_as_none(value: object) -> object:
+    """Change an empty query value to ``None``.
+
+    The filter form sends ``account=`` when the user selects "All accounts".
+    """
+    return None if value == "" else value
+
+
+OptionalId = Annotated[int | None, BeforeValidator(_empty_as_none), Query()]
 
 
 def _get_tx(auth: CurrentAuth, tx_id: int) -> Transaction:
@@ -36,8 +48,8 @@ def _escape_like(text: str) -> str:
 def transactions_page(
     request: Request,
     auth: CurrentAuth,
-    account: Annotated[int | None, Query()] = None,
-    category: Annotated[int | None, Query()] = None,
+    account: OptionalId = None,
+    category: OptionalId = None,
     uncategorised: Annotated[bool, Query()] = False,
     q: Annotated[str, Query(max_length=100)] = "",
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
