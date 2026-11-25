@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, amount, category_options with context %}
+{% block title %}Transactions{% endblock %}
+{% block content %}
+<h1>Transactions</h1>
+<form method="get" action="/transactions" class="filters">
+  <label>Account
+    <select name="account" data-autosubmit-change>
+      <option value="">All accounts</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {% if a.id == filter_account %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Search <input name="q" value="{{ q }}" maxlength="100" type="search"></label>
+  <label class="check"><input type="checkbox" name="uncategorised" value="true" {% if filter_uncategorised %}checked{% endif %} data-autosubmit-change> Only uncategorised</label>
+  {% if filter_category %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
+  <button type="submit">Filter</button>
+  {% if query_string %}<a href="/transactions">Remove the filters</a>{% endif %}
+</form>
+
+<p class="hint">{{ total }} transactions.</p>
+<table class="transactions">
+  <thead><tr><th scope="col">Date</th><th scope="col">Account</th><th scope="col">Counterparty and description</th><th scope="col">Category</th><th scope="col" class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for t in transactions %}
+    <tr>
+      <td class="nowrap">{{ t.booking_date | swiss_date }}</td>
+      <td>{{ t.account.name }}</td>
+      <td>
+        <strong>{{ t.counterparty or '—' }}</strong>
+        {% if t.description %}<div class="small">{{ t.description }}</div>{% endif %}
+        {% if t.reference %}<div class="small mono">Ref. {{ t.reference }}</div>{% endif %}
+        <form method="post" action="/transactions/{{ t.id }}/memo" class="memo">
+          {{ csrf() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+          <input name="memo" value="{{ t.memo }}" maxlength="500" placeholder="Memo" aria-label="Memo" data-autosubmit-change>
+        </form>
+      </td>
+      <td>
+        {% if t.account.on_budget %}
+        <form method="post" action="/transactions/{{ t.id }}/category">
+          {{ csrf() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+          <select name="category_id" aria-label="Category" data-autosubmit-change class="{{ 'missing' if not t.category_id and not t.is_transfer }}">
+            {% if t.is_transfer %}<option value="transfer" selected>⇄ Transfer</option>{% endif %}
+            {{ category_options(groups, t.category_id, include_transfer=not t.is_transfer) }}
+          </select>
+          <noscript><button type="submit">Save</button></noscript>
+        </form>
+        {% else %}<span class="small">Tracking account</span>{% endif %}
+      </td>
+      <td class="num nowrap">{{ amount(t.amount_minor, t.currency) }}
+        {% if t.source == 'manual' %}
+        <form method="post" action="/transactions/{{ t.id }}/delete" class="inline" data-confirm="Delete this transaction?">
+          {{ csrf() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+          <button type="submit" class="link" aria-label="Delete">✕</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5">No transactions. <a href="/import">Import a statement</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page > 1 %}<a href="/transactions?{{ query_string }}{{ '&' if query_string }}page={{ page - 1 }}">◀ Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a href="/transactions?{{ query_string }}{{ '&' if query_string }}page={{ page + 1 }}">Next ▶</a>{% endif %}
+</nav>
+{% endif %}
+
+<section class="card">
+  <h2>Add a transaction manually</h2>
+  <form method="post" action="/transactions" class="grid-form">
+    {{ csrf() }}
+    <label>Account
+      <select name="account_id" required>
+        {% for a in accounts if not a.closed %}<option value="{{ a.id }}" {% if a.id == filter_account %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Date <input type="date" name="booking_date" value="{{ today }}" required></label>
+    <label>Direction
+      <select name="direction"><option value="outflow">Outflow (−)</option><option value="inflow">Inflow (+)</option></select>
+    </label>
+    <label>Amount <input name="amount" inputmode="decimal" required placeholder="12.50"></label>
+    <label>Counterparty <input name="counterparty" maxlength="140"></label>
+    <label>Category <select name="category_id">{{ category_options(groups) }}</select></label>
+    <label>Memo <input name="memo" maxlength="500"></label>
+    <button type="submit">Add the transaction</button>
+  </form>
+</section>
+{% endblock %}
