@@ -3,7 +3,7 @@
 The parser supports the message versions camt.053.001.02 to camt.053.001.13.
 Swiss banks use these versions as specified in the Swiss Payment Standards (SPS).
 
-Security (see ADR-0005):
+Security (see ADR-0005 and ADR-0014):
 
 * The parser uses :mod:`defusedxml`. It refuses DTDs, entity declarations and
   external references. This prevents XXE and "billion laughs" attacks.
