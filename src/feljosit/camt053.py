@@ -3,26 +3,33 @@
 The parser supports the message versions camt.053.001.02 to camt.053.001.13.
 Swiss banks use these versions as specified in the Swiss Payment Standards (SPS).
 
-Security:
+Security (see ADR-0005):
 
 * The parser uses :mod:`defusedxml`. It refuses DTDs, entity declarations and
   external references. This prevents XXE and "billion laughs" attacks.
+* The tree builder limits the number of elements, the nesting depth and the
+  number of attributes of each element. This limits the memory and the time
+  that one document can use.
+* Amounts must have the ISO 20022 decimal syntax without an exponent. Thus a
+  value such as ``1E999999`` cannot use the CPU for a long time.
 * The caller must limit the size of the input before the parser reads it.
 * ZIP archives (frequent for Swiss e-banking exports) have limits for the number
   of files, the size of each file and the total uncompressed size.
+* Error messages do not include values from the file.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import pyexpat
 import re
 import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from xml.etree.ElementTree import Element
+from xml.etree.ElementTree import Element, TreeBuilder
 
 import defusedxml.ElementTree as SafeET
 from defusedxml import DefusedXmlException
@@ -33,13 +40,55 @@ from feljosit.money import MoneyError, to_minor, validate_currency
 _NAMESPACE_RE = re.compile(r"^urn:iso:std:iso:20022:tech:xsd:camt\.053\.001\.(\d{2})$")
 SUPPORTED_VERSIONS = range(2, 14)
 
-MAX_ZIP_MEMBERS = 100
-MAX_MEMBER_BYTES = 20 * 1024 * 1024
-MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_ZIP_MEMBERS = 50
+MAX_MEMBER_BYTES = 10 * 1024 * 1024
+MAX_TOTAL_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+
+#: Limits for one XML document. A camt.053 entry has approximately 20 to 80 elements
+#: and a nesting depth of less than 15. Each attribute uses ``Ccy`` or a namespace.
+MAX_ELEMENTS = 1_000_000
+MAX_DEPTH = 64
+MAX_ATTRIBUTES = 16
+
+#: The first libexpat release that has the fixes for CVE-2024-8176 and CVE-2025-59375.
+MIN_EXPAT_VERSION = (2, 7, 2)
+
+#: ISO 20022 ``ActiveOrHistoricCurrencyAndAmount``: decimal, no sign, no exponent.
+#: The application limits the integer part to 12 digits (as for typed amounts).
+_AMOUNT_RE = re.compile(r"^\d{1,12}(\.\d{1,5})?$")
 
 
 class Camt053Error(ValueError):
     """The file is not a valid or supported camt.053 statement."""
+
+
+def expat_is_patched() -> bool:
+    """Return true if the libexpat of this Python has the known security fixes."""
+    return pyexpat.version_info >= MIN_EXPAT_VERSION
+
+
+class _LimitedTreeBuilder(TreeBuilder):
+    """A tree builder that refuses documents that are too large or too deep."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._elements = 0
+        self._depth = 0
+
+    def start(self, tag: str, attrs: dict[str, str]) -> Element:
+        self._elements += 1
+        self._depth += 1
+        if self._elements > MAX_ELEMENTS:
+            raise Camt053Error("The XML document contains too many elements")
+        if self._depth > MAX_DEPTH:
+            raise Camt053Error("The XML elements are nested too deeply")
+        if len(attrs) > MAX_ATTRIBUTES:
+            raise Camt053Error("An XML element has too many attributes")
+        return super().start(tag, attrs)
+
+    def end(self, tag: str) -> Element:
+        self._depth -= 1
+        return super().end(tag)
 
 
 @dataclass(frozen=True)
@@ -130,12 +179,15 @@ def _parse_date(el: Element | None, path: str) -> date | None:
     target = el.find(path)
     if target is None:
         return None
-    raw = _text(target, "Dt")
-    if raw:
-        return date.fromisoformat(raw[:10])
-    raw = _text(target, "DtTm")
-    if raw:
-        return datetime.fromisoformat(raw).date()
+    try:
+        raw = _text(target, "Dt")
+        if raw:
+            return date.fromisoformat(raw[:10])
+        raw = _text(target, "DtTm")
+        if raw:
+            return datetime.fromisoformat(raw[:64]).date()
+    except ValueError as exc:
+        raise Camt053Error(f"A date in {path} is not valid") from exc
     return None
 
 
@@ -148,14 +200,16 @@ def _amount(el: Element | None, path: str = "Amt") -> tuple[int, str] | None:
     currency = amt.get("Ccy")
     if currency is None:
         raise Camt053Error("Amount has no currency attribute (Ccy)")
+    raw = amt.text.strip()
+    # Check the syntax before Decimal() reads the value. This refuses negative
+    # values, exponents ("1E999999"), NaN, infinity and very large numbers.
+    if not _AMOUNT_RE.fullmatch(raw):
+        raise Camt053Error("An amount is not valid")
     try:
         currency = validate_currency(currency)
-        value = Decimal(amt.text.strip())
-        if value < 0:
-            raise Camt053Error("Amount must not be negative")
-        return to_minor(value, currency), currency
+        return to_minor(Decimal(raw), currency), currency
     except (InvalidOperation, MoneyError) as exc:
-        raise Camt053Error(f"Amount is not valid: {amt.text!r}") from exc
+        raise Camt053Error("An amount or a currency is not valid") from exc
 
 
 def _sign(indicator: str | None) -> int:
@@ -165,7 +219,7 @@ def _sign(indicator: str | None) -> int:
     reversal booking. Thus no special processing is necessary.
     """
     if indicator not in {"CRDT", "DBIT"}:
-        raise Camt053Error(f"Credit/debit indicator is not valid: {indicator!r}")
+        raise Camt053Error("A credit/debit indicator is not valid")
     return 1 if indicator == "CRDT" else -1
 
 
@@ -335,8 +389,15 @@ def _parse_statement(ctx: _Ctx, version: int, stmt: Element) -> Statement:
 
 def parse_xml(data: bytes) -> list[Statement]:
     """Parse one camt.053 XML document. A document can contain more than one statement."""
+    parser = SafeET.DefusedXMLParser(
+        target=_LimitedTreeBuilder(),
+        forbid_dtd=True,
+        forbid_entities=True,
+        forbid_external=True,
+    )
     try:
-        root = SafeET.fromstring(data, forbid_dtd=True, forbid_entities=True)
+        parser.feed(data)
+        root = parser.close()
     except DefusedXmlException as exc:
         raise Camt053Error("The XML file contains forbidden constructs (DTD or entities)") from exc
     except SafeET.ParseError as exc:
@@ -357,7 +418,13 @@ def parse_xml(data: bytes) -> list[Statement]:
     if body is None:
         raise Camt053Error("The document has no BkToCstmrStmt element")
     ctx = _Ctx(message_id=_text(body, "GrpHdr/MsgId") or "")
-    statements = [_parse_statement(ctx, version, stmt) for stmt in body.findall("Stmt")]
+    try:
+        statements = [_parse_statement(ctx, version, stmt) for stmt in body.findall("Stmt")]
+    except Camt053Error:
+        raise
+    except (ValueError, ArithmeticError) as exc:
+        # Safety net: an unexpected value must not cause an internal server error.
+        raise Camt053Error("The statement contains a value that is not valid") from exc
     if not statements:
         raise Camt053Error("The document contains no statement")
     return statements

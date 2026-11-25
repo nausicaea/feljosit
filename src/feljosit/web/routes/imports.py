@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -17,6 +18,12 @@ from feljosit.web.deps import AppSettings, CsrfAuth, CurrentAuth
 from feljosit.web.rendering import render
 
 router = APIRouter()
+
+#: Only one import runs at a time. An import can use much CPU and memory. Parallel
+#: imports of the same file must also not race the duplicate check.
+_IMPORT_LOCK = threading.Lock()
+#: Time (seconds) that an import waits for a different import to finish.
+IMPORT_WAIT_SECONDS = 30
 
 
 def _page(request: Request, auth: CurrentAuth, **context: object) -> Response:
@@ -46,18 +53,22 @@ def import_page(request: Request, auth: CurrentAuth) -> Response:
 
 
 @router.post("/import", response_class=HTMLResponse)
-async def import_upload(
+def import_upload(
     request: Request,
     auth: CsrfAuth,
     settings: AppSettings,
     statement: Annotated[UploadFile, File()],
     account_id: Annotated[str, Form(max_length=20)] = "",
 ) -> Response:
-    data = await statement.read(settings.max_upload_bytes + 1)
+    # This is a synchronous handler. FastAPI runs it in a worker thread. Thus a long
+    # import does not stop the event loop and the other requests.
+    data = statement.file.read(settings.max_upload_bytes + 1)
     if len(data) > settings.max_upload_bytes:
         return _page(request, auth, error="The file is too large.")
     if not data:
         return _page(request, auth, error="The file is empty.")
+    if not _IMPORT_LOCK.acquire(timeout=IMPORT_WAIT_SECONDS):
+        return _page(request, auth, error="A different import is in progress. Try again later.")
     try:
         result = import_statement_file(
             auth.db,
@@ -66,7 +77,11 @@ async def import_upload(
             data=data,
             account_id=int(account_id) if account_id.isdigit() else None,
         )
+        # Commit before the lock is released. Then the next import sees this import.
+        auth.db.commit()
     except (ServiceError, Camt053Error) as exc:
         auth.db.rollback()
         return _page(request, auth, error=str(exc))
+    finally:
+        _IMPORT_LOCK.release()
     return _page(request, auth, result=result)
