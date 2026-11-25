@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -108,11 +108,20 @@ def transactions_page(
     )
 
 
+#: Query parameters that the transaction list accepts. A redirect keeps only these.
+_LIST_PARAMS = ("account", "category", "uncategorised", "q", "page")
+
+
 def _back(return_to: str) -> RedirectResponse:
-    # Only permit local paths. This prevents an open redirect.
-    if not return_to.startswith("/transactions") or "//" in return_to or "\\" in return_to:
-        return_to = "/transactions"
-    return RedirectResponse(return_to, status_code=303)
+    """Go back to the transaction list with the same filters.
+
+    The redirect target is always the local path ``/transactions``. Only known query
+    parameters are copied from ``return_to``. This prevents an open redirect.
+    """
+    parts = urlsplit(return_to)
+    params = [(k, v) for k, v in parse_qsl(parts.query) if k in _LIST_PARAMS]
+    query = urlencode(params)
+    return RedirectResponse(f"/transactions?{query}" if query else "/transactions", 303)
 
 
 @router.post("/transactions/{tx_id}/category")

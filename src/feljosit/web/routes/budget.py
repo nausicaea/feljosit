@@ -49,14 +49,19 @@ def assign(
     auth: CsrfAuth,
     settings: AppSettings,
     category_id: Annotated[int, Form()],
-    month: Annotated[str, Form(max_length=7)],
+    month: Annotated[str, Form(pattern=r"^\d{4}-\d{2}$")],
     amount: Annotated[str, Form(max_length=32)],
 ) -> Response:
     try:
         selected = budget.parse_month(month, date.today())
+    except ServiceError:
+        selected = budget.month_start(date.today())
+    # Build the redirect only from the parsed date, never from the raw form value.
+    target = f"/budget?month={selected:%Y-%m}"
+    try:
         value = parse_user_amount(amount or "0", settings.budget_currency)
         budget.assign(auth.db, auth.user.id, category_id, selected, value)
     except (ServiceError, MoneyError) as exc:
         auth.flash(str(exc), error=True)
-        return RedirectResponse(f"/budget?month={month}", status_code=303)
-    return RedirectResponse(f"/budget?month={selected:%Y-%m}#cat-{category_id}", status_code=303)
+        return RedirectResponse(target, status_code=303)
+    return RedirectResponse(f"{target}#cat-{category_id}", status_code=303)

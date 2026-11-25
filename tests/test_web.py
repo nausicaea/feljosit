@@ -261,6 +261,17 @@ def test_open_redirect_prevented(client: Client) -> None:
         follow_redirects=False,
     )
     assert response.headers["location"] == "/transactions"
+    for target, expected in [
+        ("https://evil.example/transactions?q=a", "/transactions?q=a"),
+        ("/transactions?account=1&next=//evil&page=2", "/transactions?account=1&page=2"),
+        ("/\\evil.example", "/transactions"),
+    ]:
+        response = http.post(
+            "/transactions/1/memo",
+            data={"csrf_token": token, "memo": "x", "return_to": target},
+            follow_redirects=False,
+        )
+        assert response.headers["location"] == expected, target
 
 
 def test_change_password_closes_other_sessions(app: FastAPI) -> None:
@@ -308,3 +319,24 @@ def test_every_form_has_a_csrf_token(client: Client) -> None:
         assert forms, path
         for form in forms:
             assert f'name="csrf_token" value="{token}"' in form, (path, form[:200])
+
+
+def test_assign_redirect_uses_only_the_parsed_month(client: Client, app: FastAPI) -> None:
+    http, token = client
+    db = app.state.session_factory()
+    groceries = db.scalar(select(Category).where(Category.name == "Groceries"))
+    assert groceries is not None
+    db.close()
+    data = {"csrf_token": token, "category_id": str(groceries.id), "amount": "x"}
+    response = http.post("/budget/assign", data={**data, "month": "/evil"}, follow_redirects=False)
+    assert response.status_code == 422
+    response = http.post(
+        "/budget/assign", data={**data, "month": "2026-13"}, follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/budget?month=")
+    assert "2026-13" not in response.headers["location"]
+    response = http.post(
+        "/budget/assign", data={**data, "month": "2026-10"}, follow_redirects=False
+    )
+    assert response.headers["location"] == "/budget?month=2026-10"
