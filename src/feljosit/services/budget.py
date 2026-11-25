@@ -207,7 +207,8 @@ def month_budget(db: Session, user_id: int, month: date) -> MonthBudget:
     )
 
 
-def assign(db: Session, user_id: int, category_id: int, month: date, amount_minor: int) -> None:
+def assign(db: Session, user_id: int, category_id: int, month: date, amount_minor: int) -> Category:
+    """Set the assigned amount of a category for a month. Return the category."""
     category = owned_category(db, user_id, category_id)
     if category.kind != CategoryKind.EXPENSE:
         raise ServiceError("You can only assign money to expense categories.")
@@ -227,3 +228,4 @@ def assign(db: Session, user_id: int, category_id: int, month: date, amount_mino
         )
     else:
         row.amount_minor = amount_minor
+    return category

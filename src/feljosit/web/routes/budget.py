@@ -60,8 +60,9 @@ def assign(
     target = f"/budget?month={selected:%Y-%m}"
     try:
         value = parse_user_amount(amount or "0", settings.budget_currency)
-        budget.assign(auth.db, auth.user.id, category_id, selected, value)
+        category = budget.assign(auth.db, auth.user.id, category_id, selected, value)
     except (ServiceError, MoneyError) as exc:
         auth.flash(str(exc), error=True)
         return RedirectResponse(target, status_code=303)
-    return RedirectResponse(f"{target}#cat-{category_id}", status_code=303)
+    # The anchor uses the ID from the database, not the form value.
+    return RedirectResponse(f"{target}#cat-{category.id}", status_code=303)
