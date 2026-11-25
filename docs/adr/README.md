@@ -34,3 +34,4 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0010](0010-server-side-charts.md) | Make the charts on the server as SVG | Accepted |
 | [0011](0011-development-workflow.md) | Use conventional commits, CI and Renovate | Accepted (Renovate part superseded by ADR-0012) |
 | [0012](0012-renovate-best-practices-and-pinning.md) | Use the Renovate best practices, pin all dependencies and wait 7 days | Accepted |
+| [0013](0013-use-uv-for-project-management.md) | Use uv for project and dependency management | Accepted |
