@@ -31,6 +31,8 @@ boundaries, the threats and the controls.
 | Information disclosure | XXE in a camt.053 file | `defusedxml` refuses DTDs, entities and external references. |
 | Information disclosure | Other local users read the database | File mode `0600`, directory mode `0700`, `umask 077`. |
 | Information disclosure | A stolen laptop | Full-disk encryption (operator responsibility, see ADR-0003). |
+| Information disclosure | A copy of the database file (for example a backup) | Encrypted backups (operator responsibility, see SECURITY.md and ADR-0014). |
+| Information disclosure | The operator reads the data of all users | Not prevented (ADR-0014). Users who do not trust each other use separate instances. |
 | Information disclosure | Error messages show data | Validation errors do not show the input. No debug mode. |
 | Denial of service | "Billion laughs" or ZIP bomb | Entities refused, ZIP limits (10 MB for each file, 25 MB in total), upload limit of 10 MB (ADR-0013). |
 | Denial of service | A very large or deep XML tree | Limits for the number of elements, the nesting depth and the attributes (ADR-0013). |
@@ -43,7 +45,9 @@ boundaries, the threats and the controls.
 
 ## Residual risks
 
-1. The database is not encrypted by the application (see ADR-0003).
+1. The database is not encrypted by the application (see ADR-0003 and ADR-0014).
 2. There is no two-factor authentication (see ADR-0007).
 3. Malware that runs as the same user can read the database.
-4. An XML element with very many attributes can use approximately 280 MB of memory before the parser refuses it (ADR-0013).
+4. The operator of an instance can read the data of all users of that instance.
+   Users who do not trust each other must use separate instances (ADR-0014).
+5. An XML element with very many attributes can use approximately 280 MB of memory before the parser refuses it (ADR-0013).

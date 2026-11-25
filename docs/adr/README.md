@@ -35,3 +35,4 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0011](0011-development-workflow.md) | Use conventional commits, CI and Renovate | Accepted (Renovate part superseded by ADR-0012) |
 | [0012](0012-renovate-best-practices-and-pinning.md) | Use the Renovate best practices, pin all dependencies and wait 7 days | Accepted |
 | [0013](0013-xml-resource-limits.md) | Limit the resources that one camt.053 import can use | Proposed |
+| [0014](0014-no-application-level-encryption.md) | Do not encrypt the data in the application | Rejected |
