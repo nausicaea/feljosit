@@ -1,6 +1,6 @@
 # ADR-0014: Limit the resources that one camt.053 import can use
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-25
 - Supersedes: the ZIP limits of ADR-0005
 
