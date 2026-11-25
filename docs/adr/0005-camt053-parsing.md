@@ -1,6 +1,6 @@
 # ADR-0005: Parse camt.053 safely and for all versions
 
-- Status: Accepted (the ZIP limits are superseded by ADR-0013)
+- Status: Accepted (the ZIP limits are superseded by ADR-0014)
 - Date: 2026-11-25
 
 ## Context

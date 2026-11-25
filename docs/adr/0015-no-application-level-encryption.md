@@ -1,4 +1,4 @@
-# ADR-0014: Do not encrypt the data in the application
+# ADR-0015: Do not encrypt the data in the application
 
 - Status: Rejected
 - Date: 2026-11-25
@@ -46,7 +46,7 @@ We keep option 1. We reject options 2, 3 and 4.
 - Option 4: Only this option protects the users from a host that is not trusted.
   It is a new architecture and supersedes ADR-0002. The camt.053 parser moves to
   the browser or to a desktop application, and it loses the XML protections of
-  Python (ADR-0005, ADR-0013). The cost is too high for 1 to 10 users.
+  Python (ADR-0005, ADR-0014). The cost is too high for 1 to 10 users.
 
 ## Consequences
 

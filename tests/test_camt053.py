@@ -285,7 +285,7 @@ def test_zip_total_uncompressed_limit(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_zip_limits_are_not_larger_than_before() -> None:
-    # A small ZIP file can expand very much. Keep the limits small (ADR-0005).
+    # A small ZIP file can expand very much. Keep the limits small (ADR-0014).
     assert camt053.MAX_MEMBER_BYTES <= 10 * 1024 * 1024
     assert camt053.MAX_TOTAL_UNCOMPRESSED_BYTES <= 25 * 1024 * 1024
 
