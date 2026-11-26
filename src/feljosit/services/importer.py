@@ -212,6 +212,17 @@ def import_statement_file(
         if tx.category_id is not None:
             item.categorised_count += 1
     db.flush()
+    # Record the pairs of the transfers that the IBAN check found.
+    transfers.pair_iban_transfers(
+        db,
+        list(
+            db.scalars(
+                select(Transaction).where(
+                    Transaction.import_batch_id == batch.id, Transaction.is_transfer.is_(True)
+                )
+            )
+        ),
+    )
     batch.new_count = result.new_count
     batch.duplicate_count = result.duplicate_count
     return result

@@ -34,7 +34,7 @@ from feljosit.models import (
     Transaction,
 )
 from feljosit.services.errors import NotFoundError, ServiceError
-from feljosit.services.transfers import match_transfers
+from feljosit.services.transfers import match_transfers, reject_transfer
 
 
 @dataclass(frozen=True)
@@ -134,15 +134,20 @@ def owned_category(db: Session, user_id: int, category_id: int) -> Category:
     return category
 
 
-def set_category(db: Session, tx: Transaction, category_id: int | None) -> None:
-    if category_id is None:
-        tx.category_id = None
-        return
-    owned_category(db, tx.user_id, category_id)
-    if not tx.account.on_budget:
-        raise ServiceError("Transactions in tracking accounts have no category.")
+def set_category(db: Session, tx: Transaction, category_id: int | None) -> Transaction | None:
+    """Set the category of a transaction (``None``: uncategorised).
+
+    If the transaction is a transfer, it stops being a transfer. If it is in a
+    transfer pair, the other transaction of the pair stops being a transfer too (see
+    :func:`feljosit.services.transfers.reject_transfer`). Return that transaction.
+    """
+    if category_id is not None:
+        owned_category(db, tx.user_id, category_id)
+        if not tx.account.on_budget:
+            raise ServiceError("Transactions in tracking accounts have no category.")
+    partner = reject_transfer(db, tx) if tx.is_transfer else None
     tx.category_id = category_id
-    tx.is_transfer = False
+    return partner
 
 
 def create_rule(

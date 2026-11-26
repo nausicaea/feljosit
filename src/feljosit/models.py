@@ -123,6 +123,22 @@ class TransactionSource(enum.StrEnum):
     STARTING_BALANCE = "starting_balance"
 
 
+class TransferMethod(enum.StrEnum):
+    """How the application found a transfer pair."""
+
+    #: The counterparty IBAN is the IBAN of the other account.
+    IBAN = "iban"
+    #: Two matching transactions (see ADR-0016).
+    MATCH = "match"
+
+
+class TransferStatus(enum.StrEnum):
+    ACTIVE = "active"
+    #: The user said that the two transactions are not a transfer. The matching does
+    #: not make this pair again.
+    REJECTED = "rejected"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -248,6 +264,32 @@ class Transaction(Base):
 
     account: Mapped[Account] = relationship()
     category: Mapped[Category | None] = relationship()
+
+
+class TransferPair(Base):
+    """The two transactions of one transfer: an outflow and an inflow on two accounts.
+
+    A transaction is in at most one active pair. The services make sure of this. A
+    transfer can also have no pair, for example if only one side is imported.
+    """
+
+    __tablename__ = "transfer_pairs"
+    __table_args__ = (UniqueConstraint("outflow_id", "inflow_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    outflow_id: Mapped[int] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"))
+    inflow_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    method: Mapped[TransferMethod] = mapped_column(_enum(TransferMethod, 10))
+    status: Mapped[TransferStatus] = mapped_column(
+        _enum(TransferStatus, 10), default=TransferStatus.ACTIVE
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+    outflow: Mapped[Transaction] = relationship(foreign_keys=[outflow_id])
+    inflow: Mapped[Transaction] = relationship(foreign_keys=[inflow_id])
 
 
 class BudgetAssignment(Base):

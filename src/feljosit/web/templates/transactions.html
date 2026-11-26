@@ -12,6 +12,7 @@
   </label>
   <label>Search <input name="q" value="{{ q }}" maxlength="100" type="search"></label>
   <label class="check"><input type="checkbox" name="uncategorised" value="true" {% if filter_uncategorised %}checked{% endif %} data-autosubmit-change> Only uncategorised</label>
+  <label class="check"><input type="checkbox" name="matched" value="true" {% if filter_matched %}checked{% endif %} data-autosubmit-change> Only matched transfers</label>
   {% if filter_category %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
   <button type="submit">Filter</button>
   {% if query_string %}<a href="/transactions">Remove the filters</a>{% endif %}
@@ -44,6 +45,10 @@
           </select>
           <noscript><button type="submit">Save</button></noscript>
         </form>
+        {% set partner = partners.get(t.id) %}
+        {% if partner %}
+        <div class="small">⇄ <a href="/transactions?{{ dict(account=partner.tx.account_id, q=partner.tx.counterparty[:100]) | urlencode }}">{{ partner.tx.account.name }}, {{ partner.tx.booking_date | swiss_date }}</a>{% if partner.method == 'match' %} · found from the amount{% endif %}</div>
+        {% endif %}
         {% else %}<span class="small">Tracking account</span>{% endif %}
       </td>
       <td class="num nowrap">{{ amount(t.amount_minor, t.currency) }}

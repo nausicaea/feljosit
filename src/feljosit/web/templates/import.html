@@ -16,7 +16,7 @@
     <li>{{ s.new_count }} new transactions</li>
     <li>{{ s.duplicate_count }} transactions were imported before (ignored)</li>
     <li>{{ s.categorised_count }} transactions got a category automatically</li>
-    <li>{{ s.transfer_count }} transfers between your accounts{% if s.matched_transfer_count %} ({{ s.matched_transfer_count }} found from a matching transaction on a different account){% endif %}</li>
+    <li>{{ s.transfer_count }} transfers between your accounts{% if s.matched_transfer_count %} ({{ s.matched_transfer_count }} found from a matching transaction on a different account, <a href="/transactions?matched=true">check them</a>){% endif %}</li>
     {% if s.skipped_entries %}<li>{{ s.skipped_entries }} entries are not booked (pending) and were ignored</li>{% endif %}
   </ul>
   {% if s.balance_matches is true %}

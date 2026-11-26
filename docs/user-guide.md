@@ -96,8 +96,14 @@ CAUTION: If the closing balance does not agree, transactions are possibly missin
 Import the older statements too.
 
 CAUTION: Two unrelated transactions with the same amount can become a wrong
-transfer. If a transfer is wrong, select the correct category for both
-transactions of the pair.
+transfer. Check the matched transfers: in the import result, click "check them",
+or select "Only matched transfers" on the transactions page.
+
+For a transfer with a known partner, the transactions page shows the other
+account and the date below the category (⇄). If a transfer is wrong, select the
+correct category, or "— Uncategorised —". Both transactions of the pair stop
+being transfers, and the application does not match them again. Give a category
+to the other transaction too.
 
 ## Procedure: categorise transactions
 
