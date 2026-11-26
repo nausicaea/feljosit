@@ -194,6 +194,21 @@ The list "Category" has these choices, in addition to each category:
 
 To check the transfers of one account, select the account and "All transfers".
 
+## Procedure: sort the transactions by amount
+
+1. Click "Transactions".
+2. In "Sort", select one of these values:
+   - "Amount, lowest first (largest outflows)".
+   - "Amount, highest first (largest inflows)".
+   - "Amount without sign, largest first".
+
+The default is "Date, newest first". Transactions with the same amount are newest
+first. The sort order stays when you filter, go to a different page of the list,
+or change a transaction.
+
+The sort compares the numbers of the amounts, not their value in francs. For
+example, 3'000 JPY is before 2'500.00 CHF. To sort only one currency, select its account.
+
 ## Procedure: show the account number of the counterparty
 
 1. Click "Transactions".
