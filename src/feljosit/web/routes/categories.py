@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 
 from feljosit.models import (
@@ -16,7 +16,7 @@ from feljosit.models import (
     MatchType,
     RuleField,
 )
-from feljosit.services import categorise
+from feljosit.services import categories, categorise
 from feljosit.services.errors import NotFoundError, ServiceError
 from feljosit.web.deps import CsrfAuth, CurrentAuth
 from feljosit.web.rendering import render
@@ -119,6 +119,40 @@ def hide_category(
 ) -> Response:
     category = categorise.owned_category(auth.db, auth.user.id, category_id)
     category.hidden = hidden
+    return RedirectResponse("/categories", status_code=303)
+
+
+def _wants_json(request: Request) -> bool:
+    """The drag-and-drop script asks for JSON. A form without JavaScript gets a redirect."""
+    return "application/json" in request.headers.get("accept", "")
+
+
+@router.post("/categories/{category_id}/move")
+def move_category(
+    request: Request,
+    auth: CsrfAuth,
+    category_id: int,
+    group_id: Annotated[int, Form()],
+    before_id: Annotated[str, Form(max_length=20)] = "",
+) -> Response:
+    """Move a category into a group, before a different category or to the end."""
+    category = categorise.owned_category(auth.db, auth.user.id, category_id)
+    group = categories.owned_group(auth.db, auth.user.id, group_id)
+    before = (
+        categorise.owned_category(auth.db, auth.user.id, int(before_id))
+        if before_id.isdigit()
+        else None
+    )
+    try:
+        categories.move_category(auth.db, category, group, before)
+    except ServiceError as exc:
+        if _wants_json(request):
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        auth.flash(str(exc), error=True)
+        return RedirectResponse("/categories", status_code=303)
+    if _wants_json(request):
+        return JSONResponse({"group": group.name})
+    auth.flash(f"The category '{category.name}' is in the group '{group.name}' now.")
     return RedirectResponse("/categories", status_code=303)
 
 

@@ -97,6 +97,23 @@ For a transfer between your accounts, select "Transfer". A transfer from a budge
 account to a tracking account (for example to pillar 3a) needs a category,
 because the money leaves the budget.
 
+## Procedure: move a category into a different group
+
+1. Click "Categories".
+2. Put the mouse pointer on ⠿ at the left of the category.
+3. Hold the mouse button and drag the category to the new position. The new
+   position can be in a different group or in the same group.
+4. Release the mouse button.
+
+The application saves the change immediately. The budget page shows the
+categories in the same groups and in the same order.
+
+Alternative: select the new group in the list of the category. The category moves
+to the end of the group. Use this method on a phone or a tablet, or with the
+keyboard.
+
+The transactions, the assigned amounts and the rules of the category do not change.
+
 ## Procedure: make a rule
 
 1. Click "Categories".
