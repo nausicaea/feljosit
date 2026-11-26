@@ -9,7 +9,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BeforeValidator
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 
 from feljosit.iban import normalise_iban
 from feljosit.models import (
@@ -53,46 +53,77 @@ def _escape_like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+#: The special values of the category filter. A number is a category ID.
+CATEGORY_FILTERS = {
+    "uncategorised": "— Uncategorised —",
+    "transfers": "All transfers",
+    "matched": "Transfers found from the amount",
+    "unmatched": "Unmatched transfers (no partner)",
+}
+
+
+def _pair_ids(auth: CurrentAuth, method: TransferMethod | None = None) -> ColumnElement[bool]:
+    """Transactions that are in an active pair (of ``method``, if given)."""
+    conditions = [
+        TransferPair.user_id == auth.user.id,
+        TransferPair.status == TransferStatus.ACTIVE,
+    ]
+    if method is not None:
+        conditions.append(TransferPair.method == method)
+    return or_(
+        Transaction.id.in_(select(TransferPair.outflow_id).where(*conditions)),
+        Transaction.id.in_(select(TransferPair.inflow_id).where(*conditions)),
+    )
+
+
+def _category_filter(auth: CurrentAuth, category: str) -> list[ColumnElement[bool]]:
+    """The conditions for a value of the category filter. An unknown value: no filter."""
+    if category == "uncategorised":
+        return [
+            Transaction.category_id.is_(None),
+            Transaction.is_transfer.is_(False),
+            Account.on_budget.is_(True),
+        ]
+    if category == "transfers":
+        return [Transaction.is_transfer.is_(True)]
+    if category == "matched":
+        return [Transaction.is_transfer.is_(True), _pair_ids(auth, TransferMethod.MATCH)]
+    if category == "unmatched":
+        return [Transaction.is_transfer.is_(True), ~_pair_ids(auth)]
+    if category.isdigit():
+        return [Transaction.category_id == int(category)]
+    return []
+
+
 @router.get("/transactions", response_class=HTMLResponse)
 def transactions_page(
     request: Request,
     auth: CurrentAuth,
     account: OptionalId = None,
-    category: OptionalId = None,
-    uncategorised: Annotated[bool, Query()] = False,
+    category: Annotated[str, Query(max_length=20)] = "",
     q: Annotated[str, Query(max_length=100)] = "",
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
-    matched: Annotated[bool, Query()] = False,
     iban: Annotated[bool, Query()] = False,
+    uncategorised: Annotated[bool, Query()] = False,
+    matched: Annotated[bool, Query()] = False,
 ) -> Response:
     """The transaction list.
 
-    ``matched`` shows only the transfers found from matching. ``iban`` shows the
-    account number of the counterparty.
+    ``category`` is a category ID or a value of ``CATEGORY_FILTERS``. ``iban`` shows
+    the account number of the counterparty. ``uncategorised`` and ``matched`` are the
+    parameters of older links. They are the same as ``category=uncategorised`` and
+    ``category=matched``.
     """
+    if uncategorised:
+        category = "uncategorised"
+    elif matched:
+        category = "matched"
+    if not (category in CATEGORY_FILTERS or category.isdigit()):
+        category = ""
     filters = [Transaction.user_id == auth.user.id]
     if account is not None:
         filters.append(Transaction.account_id == account)
-    if category is not None:
-        filters.append(Transaction.category_id == category)
-    if uncategorised:
-        filters += [
-            Transaction.category_id.is_(None),
-            Transaction.is_transfer.is_(False),
-            Account.on_budget.is_(True),
-        ]
-    if matched:
-        active_match = (
-            TransferPair.user_id == auth.user.id,
-            TransferPair.status == TransferStatus.ACTIVE,
-            TransferPair.method == TransferMethod.MATCH,
-        )
-        filters.append(
-            or_(
-                Transaction.id.in_(select(TransferPair.outflow_id).where(*active_match)),
-                Transaction.id.in_(select(TransferPair.inflow_id).where(*active_match)),
-            )
-        )
+    filters += _category_filter(auth, category)
     if q.strip():
         pattern = f"%{_escape_like(q.strip())}%"
         conditions = [
@@ -128,10 +159,8 @@ def transactions_page(
         k: v
         for k, v in {
             "account": account,
-            "category": category,
-            "uncategorised": "true" if uncategorised else None,
+            "category": category or None,
             "q": q or None,
-            "matched": "true" if matched else None,
         }.items()
         if v is not None
     }
@@ -155,8 +184,7 @@ def transactions_page(
         groups=groups,
         filter_account=account,
         filter_category=category,
-        filter_uncategorised=uncategorised,
-        filter_matched=matched,
+        category_filters=CATEGORY_FILTERS,
         q=q,
         today=date.today().isoformat(),
     )
