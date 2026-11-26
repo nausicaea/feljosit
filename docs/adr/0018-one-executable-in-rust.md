@@ -88,6 +88,56 @@ These rules keep the change safe for the users:
   and the messages are the same. The tests of the Python version are ported to
   Rust. A test opens a database that the Python version made.
 
+### The template engine
+
+Version 0.3.0 has 16 Jinja2 templates with approximately 780 template tags.
+The templates use template inheritance (`extends` and `block`), macros that read
+the variables of the page (`with context`), calculations (`chart.left - 6`),
+comparisons, filters with arguments and `for … if …` loops. Many tests compare
+the HTML exactly.
+
+We compared three template engines on 2026-11-26:
+
+1. `minijinja` 3.1.0: a Jinja2 implementation. It reads the templates when the
+   application starts and checks the values when it makes a page.
+2. `askama` 0.16.1: Jinja-like templates. A macro converts each template to Rust
+   code when the project compiles. Each page has a Rust structure with its values.
+3. `handlebars`: logic-less templates (Mustache syntax).
+
+To compare `minijinja` and `askama` with real data, we converted the budget page
+(`base.html`, `macros.html`, `budget.html`) to both.
+
+| Criterion | `minijinja` | `askama` |
+| --- | --- | --- |
+| Changes to the templates | 39 changed lines in 13 of the 16 templates, for example `'%.1f' % x` becomes `x \| fixed(1)` | About 10 changes in the 3 templates of the budget page alone. Estimate for all templates: 1 to 2 days |
+| Template syntax | Jinja2. Imports, macros, `set`, inline `if … else` and the tests `is none` and `is true` are the same | Different: `{% import … as m %}` and `{% call m::csrf(token) %}`, `let` instead of `set`, Rust expressions (`if let Some(x) = …`, `flash.0`, `starts_with`), no inline `if … else` with single quotes |
+| Macros | Read the variables of the page | Get each value as an argument |
+| Values of a page | Dynamic values. The handlers give structures (with `serde`) or maps | One Rust structure for each page. The common values (user, CSRF token, message) must be in each structure |
+| Errors | When the page is made. Example: `.items()` on a list gave HTTP 500 until a test opened the page | When the project compiles. Example: `{% if count %}` with a number is refused, because it is not a boolean |
+| Templates in the executable | `include_str!` and a list in `render.rs` | Automatic |
+| Speed | Fast enough. A page takes less than 1 ms | Faster, but the difference has no effect for 1 to 10 users |
+| Maintainer | Armin Ronacher (the author of Jinja2) | The `askama-rs` organisation |
+
+Handlebars does not have template inheritance with blocks, calculations or
+comparisons. Each of these needs a helper in Rust, or the handlers must calculate
+more values. Thus a change to Handlebars is a complete rewrite of the templates.
+We did not continue with Handlebars.
+
+We use `minijinja` (option 1). The conversion from Jinja2 is small and safe. The
+macros and the syntax stay the same, and the HTML stays the same. `askama` gives
+the better checks, but the conversion needs 1 to 2 days and many new Rust
+structures. A conversion during the rewrite to Rust adds a second large risk.
+
+We decrease the risk of errors that `minijinja` shows only when it makes a page:
+
+- A unit test compiles all templates (`render.rs`).
+- The tests open each page, also with the optional parts (import result, report
+  details, transfer partners, errors).
+
+We will examine `askama` again when the templates change much, or if template
+errors that the tests do not find get into a release. The templates stay close
+to Jinja2. Thus a later conversion stays possible.
+
 The layers stay the same as in ADR-0002:
 
 - `camt053`, `cardcsv`, `money`, `iban`: functions without a database.
