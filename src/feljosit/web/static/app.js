@@ -139,36 +139,56 @@ document.addEventListener("submit", (event) => {
   });
 })();
 
-// Transactions: "Select all" for the checkboxes of the bulk category form, and the
-// number of selected transactions. Without JavaScript, select each checkbox.
+// Transactions: the bulk category form. "Select all matching transactions" also
+// selects the checkboxes of the page. A change of one checkbox makes the selection
+// manual again. The form shows the number of selected transactions, and asks for a
+// confirmation before it changes all matching transactions. Without JavaScript, the
+// form also works: the server ignores the checkboxes of the rows for "all".
 (() => {
-  const all = document.querySelector("input[data-select-all]");
   const form = document.getElementById("bulk");
-  if (!all || !form) {
+  if (!form) {
     return;
   }
+  const all = form.querySelector("input[data-select-all]");
+  const select = form.elements.category_id;
   const boxes = () => document.querySelectorAll('input[type=checkbox][name=tx_id][form="bulk"]');
   const count = form.querySelector("[data-selected-count]");
   const update = () => {
-    const list = [...boxes()];
-    const selected = list.filter((box) => box.checked).length;
-    all.checked = list.length > 0 && selected === list.length;
-    all.indeterminate = selected > 0 && selected < list.length;
+    const allSelected = all !== null && all.checked;
+    const selected = allSelected
+      ? Number(all.dataset.total)
+      : [...boxes()].filter((box) => box.checked).length;
     if (count) {
       count.textContent = selected === 0 ? "" : `${selected} selected.`;
     }
+    if (allSelected) {
+      const option = select.options[select.selectedIndex];
+      const name = select.value === "" ? "" : ` "${option.text.trim()}"`;
+      form.dataset.confirm = `Give the category${name} to ${selected} transactions?`;
+    } else {
+      delete form.dataset.confirm;
+    }
   };
-  all.closest("label").hidden = false;
+  const selectRows = () => {
+    for (const box of boxes()) {
+      box.checked = all.checked;
+    }
+  };
   document.addEventListener("change", (event) => {
     const el = event.target;
-    if (el === all) {
-      for (const box of boxes()) {
-        box.checked = all.checked;
-      }
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement) || el.form !== form) {
+      return;
     }
-    if (el instanceof HTMLInputElement && el.form === form) {
-      update();
+    if (all && el === all) {
+      selectRows();
+    } else if (all && el.name === "tx_id") {
+      all.checked = false;
     }
+    update();
   });
+  // The browser can restore the state of the form, for example after "Back".
+  if (all && all.checked) {
+    selectRows();
+  }
   update();
 })();

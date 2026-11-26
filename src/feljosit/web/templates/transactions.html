@@ -49,7 +49,11 @@
       {{ category_options(groups, include_transfer=True, uncategorised_value='none') }}
     </select>
   </label>
-  <label class="check" hidden data-select-all-label><input type="checkbox" data-select-all> Select all on this page</label>
+  {% if selectable %}
+  <label class="check"><input type="checkbox" name="scope" value="all" data-select-all data-total="{{ selectable }}"> Select all {{ selectable }} matching transactions</label>
+  <input type="hidden" name="expected" value="{{ selectable }}">
+  {% for name, value in filter_params.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  {% endif %}
   <button type="submit">Assign the category</button>
   <span class="hint" data-selected-count aria-live="polite"></span>
 </form>
