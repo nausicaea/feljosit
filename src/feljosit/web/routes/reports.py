@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from typing import Annotated
 
@@ -13,7 +14,7 @@ from feljosit.money import format_minor
 from feljosit.services import reports
 from feljosit.services.budget import add_months, month_start
 from feljosit.web import charts
-from feljosit.web.deps import AppSettings, CurrentAuth
+from feljosit.web.deps import AppSettings, Auth, CurrentAuth
 from feljosit.web.rendering import month_short, render
 
 router = APIRouter()
@@ -113,15 +114,45 @@ def _axis_formatter(currency: str) -> charts.Formatter:
     return fmt
 
 
-@router.get("/reports", response_class=HTMLResponse)
-def reports_page(
-    request: Request,
-    auth: CurrentAuth,
-    settings: AppSettings,
-    period: Annotated[str, Query(max_length=3)] = DEFAULT_PERIOD,
-    date_from: Annotated[OptionalDate, Query(alias="from")] = None,
-    date_to: Annotated[OptionalDate, Query(alias="to")] = None,
-) -> Response:
+@dataclass(frozen=True)
+class ReportPeriod:
+    """The period of a report page, from the query parameters."""
+
+    start: date
+    end: date
+    #: The preset period, or ``None`` for a custom period.
+    period: str | None
+    error: str | None
+    shortened: bool
+    form_from: str
+    form_to: str
+
+    @property
+    def query(self) -> dict[str, str]:
+        """The query parameters that select this period on a different report page."""
+        if self.period is None:
+            return {"from": self.start.isoformat(), "to": self.end.isoformat()}
+        return {"period": self.period}
+
+    def template_context(self) -> dict[str, object]:
+        return {
+            "period": self.period,
+            "periods": PERIOD_LABELS,
+            "custom": self.period is None,
+            "error": self.error,
+            "shortened": self.shortened,
+            "max_years": MAX_MONTHS // 12,
+            "form_from": self.form_from,
+            "form_to": self.form_to,
+            "start": self.start,
+            "end": self.end,
+            "period_query": self.query,
+        }
+
+
+def resolve_period(
+    auth: Auth, period: str, date_from: date | None, date_to: date | None
+) -> ReportPeriod:
     today = date.today()
     error: str | None = None
     custom = date_from is not None or date_to is not None
@@ -139,6 +170,33 @@ def reports_page(
         start, end, shortened = all_range(data_range, today)
     elif not custom:
         start, end = _preset_range(period, today)
+    return ReportPeriod(
+        start=start,
+        end=end,
+        period=None if custom else period,
+        error=error,
+        shortened=shortened,
+        form_from=date_from.isoformat() if date_from else start.isoformat(),
+        form_to=date_to.isoformat() if date_to else end.isoformat(),
+    )
+
+
+PeriodQuery = Annotated[str, Query(max_length=3)]
+DateFrom = Annotated[OptionalDate, Query(alias="from")]
+DateTo = Annotated[OptionalDate, Query(alias="to")]
+
+
+@router.get("/reports", response_class=HTMLResponse)
+def reports_page(
+    request: Request,
+    auth: CurrentAuth,
+    settings: AppSettings,
+    period: PeriodQuery = DEFAULT_PERIOD,
+    date_from: DateFrom = None,
+    date_to: DateTo = None,
+) -> Response:
+    chosen = resolve_period(auth, period, date_from, date_to)
+    start, end = chosen.start, chosen.end
     currency = settings.budget_currency
 
     fmt_axis = _axis_formatter(currency)
@@ -175,21 +233,107 @@ def reports_page(
         request,
         "reports.html",
         auth,
-        period=None if custom else period,
-        periods=PERIOD_LABELS,
-        shortened=shortened,
-        max_years=MAX_MONTHS // 12,
-        custom=custom,
-        error=error,
-        form_from=date_from.isoformat() if date_from else start.isoformat(),
-        form_to=date_to.isoformat() if date_to else end.isoformat(),
-        start=start,
-        end=end,
+        **chosen.template_context(),
+        keep={},
         flows=flows,
         flow_chart=flow_chart,
         spending_rows=spending_rows,
         spending_total=sum(s.total for s in spending),
         summary=reports.summary(flows),
         worth_charts=worth_charts,
-        status_code=400 if error else 200,
+        status_code=400 if chosen.error else 200,
+    )
+
+
+SORTS = {"budget": "Budget order", "total": "Largest total", "change": "Largest increase"}
+UNCATEGORISED = "uncategorised"
+
+
+def _bucket_label(start: date, size: int) -> str:
+    if size == 12:
+        return str(start.year)
+    if size == 3:
+        return f"Q{(start.month - 1) // 3 + 1} {start.year % 100:02d}"
+    return month_short(start)
+
+
+HEAT_STEPS = (0.10, 0.25, 0.50, 1.00)
+"""A cell gets a heat level if it is this much above the average of its row (+10 %, +25 % …)."""
+
+
+def _heat(value: int, average: int) -> int:
+    """A heat level from 0 to 4: how much a cell is above the average of its row."""
+    if average <= 0 or value <= average:
+        return 0
+    above = value / average - 1
+    return sum(1 for step in HEAT_STEPS if above >= step)
+
+
+def _sorted_rows(
+    rows: tuple[reports.CategorySeries, ...], sort: str
+) -> list[reports.CategorySeries]:
+    if sort == "total":
+        return sorted(rows, key=lambda r: r.total, reverse=True)
+    if sort == "change":
+        return sorted(
+            rows,
+            key=lambda r: (r.change_percent is None, -(r.change_percent or 0.0)),
+        )
+    return list(rows)
+
+
+@router.get("/reports/categories", response_class=HTMLResponse)
+def category_report_page(
+    request: Request,
+    auth: CurrentAuth,
+    settings: AppSettings,
+    period: PeriodQuery = DEFAULT_PERIOD,
+    date_from: DateFrom = None,
+    date_to: DateTo = None,
+    sort: Annotated[str, Query(max_length=10)] = "budget",
+    category: Annotated[str, Query(max_length=20)] = "",
+) -> Response:
+    chosen = resolve_period(auth, period, date_from, date_to)
+    currency = settings.budget_currency
+    if sort not in SORTS:
+        sort = "budget"
+    data = reports.compare_categories(auth.db, auth.user.id, chosen.start, chosen.end)
+
+    selected: reports.CategorySeries | None = None
+    if category == UNCATEGORISED:
+        selected = next((r for r in data.rows if r.category_id is None), None)
+    elif category.isdigit():
+        selected = next((r for r in data.rows if r.category_id == int(category)), None)
+    detail: dict[str, object] | None = None
+    if selected is not None:
+        label_step, label_offset = _month_labels(list(data.months))
+        detail = {
+            "row": selected,
+            "chart": charts.grouped_bars(
+                [month_short(m) for m in data.months],
+                [("bar-expense", list(selected.monthly))],
+                _axis_formatter(currency),
+                label_step,
+                label_offset,
+            ),
+            "counterparties": reports.top_counterparties(
+                auth.db, auth.user.id, selected.category_id, chosen.start, chosen.end
+            ),
+            "key": UNCATEGORISED if selected.category_id is None else str(selected.category_id),
+        }
+    return render(
+        request,
+        "report_categories.html",
+        auth,
+        **chosen.template_context(),
+        data=data,
+        rows=_sorted_rows(data.rows, sort),
+        sort=sort,
+        sorts=SORTS,
+        bucket_labels=[_bucket_label(b, data.bucket_months) for b in data.buckets],
+        heat=_heat,
+        keep={"sort": sort} | ({"category": category} if detail else {}),
+        detail=detail,
+        category_key=lambda r: UNCATEGORISED if r.category_id is None else str(r.category_id),
+        status_code=400 if chosen.error else 200,
     )
