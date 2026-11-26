@@ -138,3 +138,37 @@ document.addEventListener("submit", (event) => {
     clearTargets();
   });
 })();
+
+// Transactions: "Select all" for the checkboxes of the bulk category form, and the
+// number of selected transactions. Without JavaScript, select each checkbox.
+(() => {
+  const all = document.querySelector("input[data-select-all]");
+  const form = document.getElementById("bulk");
+  if (!all || !form) {
+    return;
+  }
+  const boxes = () => document.querySelectorAll('input[type=checkbox][name=tx_id][form="bulk"]');
+  const count = form.querySelector("[data-selected-count]");
+  const update = () => {
+    const list = [...boxes()];
+    const selected = list.filter((box) => box.checked).length;
+    all.checked = list.length > 0 && selected === list.length;
+    all.indeterminate = selected > 0 && selected < list.length;
+    if (count) {
+      count.textContent = selected === 0 ? "" : `${selected} selected.`;
+    }
+  };
+  all.closest("label").hidden = false;
+  document.addEventListener("change", (event) => {
+    const el = event.target;
+    if (el === all) {
+      for (const box of boxes()) {
+        box.checked = all.checked;
+      }
+    }
+    if (el instanceof HTMLInputElement && el.form === form) {
+      update();
+    }
+  });
+  update();
+})();
