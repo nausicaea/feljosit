@@ -6,13 +6,14 @@ import math
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BeforeValidator
-from sqlalchemy import ColumnElement, Select, and_, false, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, case, false, func, or_, select
+from sqlalchemy.sql.elements import UnaryExpression
 
 from feljosit.iban import normalise_iban
 from feljosit.models import (
@@ -145,6 +146,41 @@ def _amount_filter(
     return [or_(*alternatives)] if alternatives else [false()]
 
 
+#: The sort orders of the transaction list. The empty value is the default.
+SORT_ORDERS = {
+    "": "Date, newest first",
+    "amount_asc": "Amount, lowest first (largest outflows)",
+    "amount_desc": "Amount, highest first (largest inflows)",
+    "size_desc": "Amount without sign, largest first",
+}
+
+
+def _order_by(auth: CurrentAuth, sort: str) -> list[UnaryExpression[Any]]:
+    """The sort order of the transaction list. An unknown value: newest first.
+
+    The amounts are in minor units, and the currencies can have a different number
+    of decimal places. Thus the sort key changes each amount to the same scale
+    (3 decimal places). Transactions with the same amount are newest first.
+    """
+    newest: list[UnaryExpression[Any]] = [
+        Transaction.booking_date.desc(),
+        Transaction.id.desc(),
+    ]
+    if sort not in SORT_ORDERS or not sort:
+        return newest
+    currencies = auth.db.scalars(
+        select(Transaction.currency).where(Transaction.user_id == auth.user.id).distinct()
+    )
+    factors = {c: 10 ** (3 - exponent(c)) for c in currencies if exponent(c) != 2}
+    scale = case(factors, value=Transaction.currency, else_=10) if factors else 10
+    key = Transaction.amount_minor * scale
+    if sort == "amount_asc":
+        return [key.asc(), *newest]
+    if sort == "amount_desc":
+        return [key.desc(), *newest]
+    return [func.abs(key).desc(), *newest]
+
+
 @dataclass
 class _ListFilter:
     """The conditions of the filters of the transaction list."""
@@ -254,6 +290,7 @@ def transactions_page(
     direction: Annotated[str, Query(max_length=10)] = "",
     amount_min: Annotated[str, Query(alias="min", max_length=32)] = "",
     amount_max: Annotated[str, Query(alias="max", max_length=32)] = "",
+    sort: Annotated[str, Query(max_length=20)] = "",
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
     iban: Annotated[bool, Query()] = False,
     uncategorised: Annotated[bool, Query()] = False,
@@ -263,7 +300,7 @@ def transactions_page(
 
     ``category`` is a category ID or a value of ``CATEGORY_FILTERS``. ``direction`` is
     a value of ``DIRECTIONS``. ``min`` and ``max`` are limits for the amount without
-    its sign. ``iban`` shows
+    its sign. ``sort`` is a value of ``SORT_ORDERS``. ``iban`` shows
     the account number of the counterparty. ``uncategorised`` and ``matched`` are the
     parameters of older links. They are the same as ``category=uncategorised`` and
     ``category=matched``.
@@ -287,9 +324,7 @@ def transactions_page(
     selectable = _count(auth, base.where(Account.on_budget.is_(True)))
     items = list(
         auth.db.scalars(
-            base.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
-            .limit(PAGE_SIZE)
-            .offset((page - 1) * PAGE_SIZE)
+            base.order_by(*_order_by(auth, sort)).limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE)
         )
     )
     groups = list(
@@ -300,8 +335,10 @@ def transactions_page(
         )
     )
     params = found.params
-    # A display option, not a filter: "Remove the filters" keeps it.
-    display = {"iban": "true"} if iban else {}
+    if sort not in SORT_ORDERS:
+        sort = ""
+    # Display options, not filters: "Remove the filters" keeps them.
+    display = {k: v for k, v in {"sort": sort, "iban": "true" if iban else ""}.items() if v}
     return render(
         request,
         "transactions.html",
@@ -315,6 +352,8 @@ def transactions_page(
         filters_active=bool(params),
         display_query=urlencode(display),
         show_iban=iban,
+        sort=sort,
+        sort_orders=SORT_ORDERS,
         return_to="/transactions?" + urlencode({**params, **display, "page": page}),
         accounts=accounts.list_accounts(auth.db, auth.user.id),
         groups=groups,
@@ -345,6 +384,7 @@ _LIST_PARAMS = (
     "page",
     "matched",
     "iban",
+    "sort",
 )
 
 

@@ -33,6 +33,11 @@
   </label>
   <label>Minimum amount <input name="min" value="{{ amount_min }}" maxlength="32" inputmode="decimal" size="9" placeholder="0.00"></label>
   <label>Maximum amount <input name="max" value="{{ amount_max }}" maxlength="32" inputmode="decimal" size="9" placeholder="0.00"></label>
+  <label>Sort
+    <select name="sort" data-autosubmit-change>
+      {% for value, label in sort_orders.items() %}<option value="{{ value }}" {% if sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
   <label class="check"><input type="checkbox" name="iban" value="true" {% if show_iban %}checked{% endif %} data-autosubmit-change> Show account numbers</label>
   <button type="submit">Filter</button>
   {% if filters_active %}<a href="/transactions{{ '?' ~ display_query if display_query }}">Remove the filters</a>{% endif %}
