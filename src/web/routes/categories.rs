@@ -149,7 +149,7 @@ pub fn move_category(ctx: &mut Ctx<'_>, category_id: Result<i64>) -> Result<Resp
         Ok(()) => {}
         Err(ServiceError::Service(message)) => {
             if wants_json(ctx) {
-                return Ok(Response::json(400, &serde_json::json!({ "error": message })));
+                return Ok(Response::json(400, crate::encoding::json_object_with_string("error", &message)));
             }
             ctx.flash(&auth, &message, true)?;
             return redirect("/categories");
@@ -157,7 +157,7 @@ pub fn move_category(ctx: &mut Ctx<'_>, category_id: Result<i64>) -> Result<Resp
         Err(other) => return Err(other.into()),
     }
     if wants_json(ctx) {
-        return Ok(Response::json(200, &serde_json::json!({ "group": group.name })));
+        return Ok(Response::json(200, crate::encoding::json_object_with_string("group", &group.name)));
     }
     ctx.flash(
         &auth,

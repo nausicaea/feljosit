@@ -37,3 +37,16 @@ A summary:
 4. Encrypt the backups.
 5. Update the application regularly.
 6. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.
+
+## Code scanning results in the tests
+
+CodeQL (`security-extended`) also examines the files in `tests/`. These results are
+known and are not vulnerabilities. Dismiss them with the given reason:
+
+| Rule | Location | Dismissal reason | Explanation |
+| --- | --- | --- | --- |
+| `rust/hard-coded-cryptographic-value` | `tests/users.rs`, `tests/importer.rs`, `tests/common/mod.rs` (the constant `PASSWORD`) | Used in tests | The tests must use known passwords: they hash a password and verify it, and `tests/users.rs` verifies a hash of version 0.3.0 with its known password. These passwords protect no data. The application has no hard-coded password, salt or key: the salts come from `getrandom`. |
+| `rust/cleartext-storage-database` | `tests/common/mod.rs` (the function `scalar`) | False positive | The data is the SQL text `SELECT password_hash FROM users` of `tests/users.rs`. The test reads the Argon2id hash. It does not write a password to the database. |
+
+If a result is in `src/`, examine it. Do not dismiss it without a reason in the
+dismissal comment.

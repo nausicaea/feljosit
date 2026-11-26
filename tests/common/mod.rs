@@ -55,10 +55,46 @@ pub fn database_with_user() -> (Connection, User) {
     (conn, user)
 }
 
+/// A new empty directory in the temporary directory of the system. The directory and
+/// its contents are deleted at the end of the test.
+pub struct TempDir(PathBuf);
+
+impl TempDir {
+    pub fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+pub fn tempdir() -> TempDir {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    loop {
+        let nanos =
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos();
+        let name = format!(
+            "feljosit-test-{}-{}-{nanos}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        );
+        let path = std::env::temp_dir().join(name);
+        match std::fs::create_dir(&path) {
+            Ok(()) => return TempDir(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("Cannot make a temporary directory: {error}"),
+        }
+    }
+}
+
 /// An application with a database in a temporary directory.
 pub struct TestApp {
     pub app: Arc<App>,
-    pub dir: tempfile::TempDir,
+    pub dir: TempDir,
 }
 
 impl TestApp {
@@ -68,7 +104,7 @@ impl TestApp {
 
     pub fn with_settings(change: impl FnOnce(&mut Settings)) -> TestApp {
         users::use_fast_hasher_for_tests();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempdir();
         let mut settings = Settings::new(dir.path().join("data"));
         change(&mut settings);
         let conn = db::open(&settings).unwrap();
@@ -165,7 +201,7 @@ pub struct Client {
 }
 
 pub fn encode(pairs: &[(&str, &str)]) -> String {
-    form_urlencoded::Serializer::new(String::new()).extend_pairs(pairs).finish()
+    feljosit::web::render::urlencode_pairs(pairs)
 }
 
 impl Client {

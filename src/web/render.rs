@@ -225,7 +225,6 @@ pub fn environment() -> Environment<'static> {
             .build()
             .expect("The syntax configuration is valid"),
     );
-    env.set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
     env.set_formatter(formatter);
     env.add_filter("money", money);
     env.add_filter("iban", iban_filter);

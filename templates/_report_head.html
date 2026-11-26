@@ -3,7 +3,7 @@
 <div class="page-head">
   <h1>Reports</h1>
   <nav class="tabs" aria-label="Period">
-    {% for p, label in periods.items() %}<a href="{{ base }}?{{ dict(period=p) | merge(keep) | urlencode }}" {% if p == period %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+    {% for p, label in periods|items %}<a href="{{ base }}?{{ dict(period=p) | merge(keep) | urlencode }}" {% if p == period %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
 </div>
 <nav class="tabs report-tabs" aria-label="Report">
@@ -12,7 +12,7 @@
   <a href="/reports/counterparties?{{ period_query | urlencode }}" {% if base == '/reports/counterparties' %}aria-current="page"{% endif %}>Spending by counterparty</a>
 </nav>
 <form method="get" action="{{ base }}" class="filters" aria-label="Custom period">
-  {% for k, v in keep.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  {% for k, v in keep|items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
   <label>From <input type="date" name="from" value="{{ form_from }}" min="1900-01-01" max="9998-12-31" required></label>
   <label>To <input type="date" name="to" value="{{ form_to }}" min="1900-01-01" max="9998-12-31" required></label>
   <button type="submit">Show</button>

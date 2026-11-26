@@ -39,6 +39,7 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0015](0015-no-application-level-encryption.md) | Do not encrypt the data in the application | Rejected |
 | [0016](0016-transfer-matching.md) | Find transfers from matching transactions | Proposed |
 | [0017](0017-credit-card-csv-import.md) | Import credit card transactions from a CSV file | Proposed |
-| [0018](0018-one-executable-in-rust.md) | Make Feljosit one executable file in Rust | Accepted (`chrono` superseded by ADR-0020) |
+| [0018](0018-one-executable-in-rust.md) | Make Feljosit one executable file in Rust | Accepted (`chrono` superseded by ADR-0020; `axum`, `tokio` and `csv` superseded by ADR-0021) |
 | [0019](0019-first-user-in-the-browser.md) | Add the first user in the browser | Accepted |
 | [0020](0020-jiff-for-dates.md) | Use jiff for dates and times | Accepted |
+| [0021](0021-minimum-dependencies.md) | Use the minimum number of external libraries | Accepted |

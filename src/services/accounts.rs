@@ -194,7 +194,7 @@ pub fn add_manual_transaction(
     }
     let counterparty: String = manual.counterparty.trim().chars().take(140).collect();
     let memo: String = manual.memo.trim().chars().take(500).collect();
-    let fingerprint = format!("manual:{}", hex::encode(super::users::random_bytes::<16>()));
+    let fingerprint = format!("manual:{}", crate::encoding::hex(super::users::random_bytes::<16>()));
     let id = NewTransaction {
         user_id: account.user_id,
         account_id: account.id,

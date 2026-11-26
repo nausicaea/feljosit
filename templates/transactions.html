@@ -28,14 +28,14 @@
   <label>Direction
     <select name="direction" data-autosubmit-change>
       <option value="">Outflows and inflows</option>
-      {% for value, label in directions.items() %}<option value="{{ value }}" {% if filter_direction == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      {% for value, label in directions|items %}<option value="{{ value }}" {% if filter_direction == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   </label>
   <label>Minimum amount <input name="min" value="{{ amount_min }}" maxlength="32" inputmode="decimal" size="9" placeholder="0.00"></label>
   <label>Maximum amount <input name="max" value="{{ amount_max }}" maxlength="32" inputmode="decimal" size="9" placeholder="0.00"></label>
   <label>Sort
     <select name="sort" data-autosubmit-change>
-      {% for value, label in sort_orders.items() %}<option value="{{ value }}" {% if sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      {% for value, label in sort_orders|items %}<option value="{{ value }}" {% if sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   </label>
   <label class="check"><input type="checkbox" name="iban" value="true" {% if show_iban %}checked{% endif %} data-autosubmit-change> Show account numbers</label>
@@ -57,7 +57,7 @@
   {% if selectable %}
   <label class="check"><input type="checkbox" name="scope" value="all" data-select-all data-total="{{ selectable }}"> Select all {{ selectable }} matching transactions</label>
   <input type="hidden" name="expected" value="{{ selectable }}">
-  {% for name, value in filter_params.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  {% for name, value in filter_params|items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
   {% endif %}
   <button type="submit">Assign the category</button>
   <span class="hint" data-selected-count aria-live="polite"></span>
@@ -91,7 +91,7 @@
           </select>
           <noscript><button type="submit">Save</button></noscript>
         </form>
-        {% set partner = partners.get(t.id) %}
+        {% set partner = partners[t.id] %}
         {% if partner %}
         <div class="small">⇄ <a href="/transactions?{{ dict(account=partner.tx.account_id, q=partner.tx.counterparty[:100]) | urlencode }}">{{ partner.tx.account.name }}, {{ partner.tx.booking_date | swiss_date }}</a>{% if partner.method == 'match' %} · found from the amount{% endif %}</div>
         {% endif %}

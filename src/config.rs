@@ -24,14 +24,36 @@ pub struct Settings {
     pub budget_currency: String,
 }
 
+/// An absolute path from an environment variable. An empty or relative value is
+/// ignored (as the XDG Base Directory specification tells).
+fn env_dir(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name).map(PathBuf::from).filter(|path| path.is_absolute())
+}
+
+/// The home directory of the user: `HOME`, or `USERPROFILE` on Windows.
+fn home_dir() -> Option<PathBuf> {
+    if cfg!(windows) { env_dir("USERPROFILE").or_else(|| env_dir("HOME")) } else { env_dir("HOME") }
+}
+
+/// The data directory of the operating system, without the name of the application.
+fn system_data_dir() -> Option<PathBuf> {
+    if cfg!(windows) {
+        env_dir("APPDATA")
+    } else if cfg!(target_os = "macos") {
+        home_dir().map(|home| home.join("Library").join("Application Support"))
+    } else {
+        env_dir("XDG_DATA_HOME").or_else(|| home_dir().map(|home| home.join(".local").join("share")))
+    }
+}
+
 /// The default data directory of the operating system:
 ///
 /// - Linux: `$XDG_DATA_HOME/feljosit` or `~/.local/share/feljosit`
 /// - macOS: `~/Library/Application Support/feljosit`
 /// - Windows: `%APPDATA%\feljosit`
 pub fn default_data_dir() -> PathBuf {
-    dirs::data_dir()
-        .or_else(|| dirs::home_dir().map(|home| home.join(".local").join("share")))
+    system_data_dir()
+        .or_else(|| home_dir().map(|home| home.join(".local").join("share")))
         .unwrap_or_else(|| PathBuf::from("."))
         .join("feljosit")
 }
@@ -39,7 +61,7 @@ pub fn default_data_dir() -> PathBuf {
 /// The data directory of version 0.3.0 (the Python version) on all systems:
 /// `~/.local/share/feljosit`.
 fn legacy_data_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".local").join("share").join("feljosit"))
+    home_dir().map(|home| home.join(".local").join("share").join("feljosit"))
 }
 
 /// The default data directory. If it has no database but the directory of version
@@ -61,11 +83,11 @@ fn parse_bool(value: Option<&String>, default: bool) -> bool {
 
 fn expand_home(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
-        if let Some(home) = dirs::home_dir() {
+        if let Some(home) = home_dir() {
             return home.join(rest);
         }
     } else if path == "~"
-        && let Some(home) = dirs::home_dir()
+        && let Some(home) = home_dir()
     {
         return home;
     }

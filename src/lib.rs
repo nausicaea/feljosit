@@ -8,10 +8,12 @@ pub mod cli;
 pub mod config;
 pub mod dates;
 pub mod db;
+pub mod encoding;
 pub mod iban;
 pub mod models;
 pub mod money;
 pub mod services;
+pub mod terminal;
 pub mod web;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

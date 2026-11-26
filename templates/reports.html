@@ -45,7 +45,7 @@
   {% else %}<p>No expenses in this period.</p>{% endif %}
 </section>
 
-{% for currency, chart in worth_charts.items() %}
+{% for currency, chart in worth_charts|items %}
 <section class="card">
   <h2>Net worth ({{ currency }}), all accounts</h2>
   {{ line_chart(chart, 'Net worth in ' ~ currency) }}

@@ -221,7 +221,7 @@ fn transaction(row: &HashMap<&str, &str>, line: u64) -> Result<StatementTransact
     if counterparty.is_empty() {
         counterparty = text_field(get(row, "Details"));
     }
-    let digest = hex::encode(Sha256::digest(transaction_id.as_bytes()));
+    let digest = crate::encoding::hex(Sha256::digest(transaction_id.as_bytes()));
     Ok(StatementTransaction {
         fingerprint: format!("card:{}", &digest[..64]),
         booking_date,
@@ -237,33 +237,90 @@ fn transaction(row: &HashMap<&str, &str>, line: u64) -> Result<StatementTransact
     })
 }
 
-/// Check the quotes as Python's `csv` module with `strict=True`: a quoted field must
-/// end before the end of the file, and a delimiter or a line end must follow it.
-fn strict_syntax_ok(text: &str, delim: u8) -> bool {
-    #[derive(PartialEq)]
-    enum State {
-        FieldStart,
-        Unquoted,
-        Quoted,
-        QuoteInQuoted,
+/// The records of a CSV text (RFC 4180). A field in quotes can contain the
+/// delimiter, line ends and two quotes for one quote. A quote after the closing quote
+/// of a field is a syntax error. Empty lines are not records.
+struct Records<'a> {
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
+    delim: char,
+    /// The number of the next line (1 is the first line).
+    line: u64,
+}
+
+impl<'a> Records<'a> {
+    fn new(text: &'a str, delim: u8) -> Records<'a> {
+        Records { chars: text.chars().peekable(), delim: char::from(delim), line: 1 }
     }
-    let delim = char::from(delim);
-    let mut state = State::FieldStart;
-    for ch in text.chars() {
-        state = match state {
-            State::FieldStart | State::Unquoted if ch == delim || ch == '\n' || ch == '\r' => {
-                State::FieldStart
+}
+
+impl Iterator for Records<'_> {
+    /// The line where the record starts, and the fields. `Err`: the syntax is not valid.
+    type Item = std::result::Result<(u64, Vec<String>), ()>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        #[derive(PartialEq)]
+        enum State {
+            FieldStart,
+            Unquoted,
+            Quoted,
+            QuoteInQuoted,
+        }
+        let mut start = self.line;
+        let mut fields = Vec::new();
+        let mut field = String::new();
+        let mut state = State::FieldStart;
+        while let Some(ch) = self.chars.next() {
+            let line_end = ch == '\n' || ch == '\r';
+            match state {
+                State::Quoted if ch == '"' => state = State::QuoteInQuoted,
+                State::Quoted => {
+                    if ch == '\n' {
+                        self.line += 1;
+                    }
+                    field.push(ch);
+                }
+                State::QuoteInQuoted if ch == '"' => {
+                    field.push('"');
+                    state = State::Quoted;
+                }
+                State::QuoteInQuoted if !(ch == self.delim || line_end) => {
+                    // Stop at the first error.
+                    self.chars = "".chars().peekable();
+                    return Some(Err(()));
+                }
+                _ if ch == self.delim => {
+                    fields.push(std::mem::take(&mut field));
+                    state = State::FieldStart;
+                }
+                _ if line_end => {
+                    if ch == '\r' && self.chars.peek() == Some(&'\n') {
+                        self.chars.next();
+                    }
+                    self.line += 1;
+                    if state == State::FieldStart && fields.is_empty() {
+                        // An empty line.
+                        start = self.line;
+                        continue;
+                    }
+                    fields.push(field);
+                    return Some(Ok((start, fields)));
+                }
+                State::FieldStart if ch == '"' => state = State::Quoted,
+                _ => {
+                    field.push(ch);
+                    state = State::Unquoted;
+                }
             }
-            State::FieldStart if ch == '"' => State::Quoted,
-            State::FieldStart | State::Unquoted => State::Unquoted,
-            State::Quoted if ch == '"' => State::QuoteInQuoted,
-            State::Quoted => State::Quoted,
-            State::QuoteInQuoted if ch == '"' => State::Quoted,
-            State::QuoteInQuoted if ch == delim || ch == '\n' || ch == '\r' => State::FieldStart,
-            State::QuoteInQuoted => return false,
-        };
+        }
+        match state {
+            State::Quoted => Some(Err(())),
+            State::FieldStart if fields.is_empty() => None,
+            _ => {
+                fields.push(field);
+                Some(Ok((start, fields)))
+            }
+        }
     }
-    state != State::Quoted
 }
 
 /// Parse a credit card CSV file.
@@ -277,17 +334,14 @@ pub fn parse_file_with_max_rows(data: &[u8], max_rows: u64) -> Result<Statement>
     let text = decoded.trim_start_matches('\u{feff}');
     let syntax_error = || CardCsvError("The CSV syntax of the file is not valid.".into());
     let delim = delimiter(header_line(text));
-    if !strict_syntax_ok(text, delim) {
+    // Check the syntax of the complete file first. Then a syntax error gives the same
+    // message, independent of the other errors.
+    if Records::new(text, delim).any(|record| record.is_err()) {
         return Err(syntax_error());
     }
-    let mut reader = csv::ReaderBuilder::new()
-        .delimiter(delim)
-        .has_headers(false)
-        .flexible(true)
-        .from_reader(text.as_bytes());
-    let mut records = reader.records();
+    let mut records = Records::new(text, delim).flatten();
     let header: Vec<String> = match records.next() {
-        Some(record) => record.map_err(|_| syntax_error())?.iter().map(|n| n.trim().to_string()).collect(),
+        Some((_, fields)) => fields.iter().map(|n| n.trim().to_string()).collect(),
         None => Vec::new(),
     };
     if REQUIRED_COLUMNS.iter().any(|column| !header.iter().any(|h| h == column)) {
@@ -295,9 +349,7 @@ pub fn parse_file_with_max_rows(data: &[u8], max_rows: u64) -> Result<Statement>
     }
     let mut transactions = Vec::new();
     let mut skipped = 0;
-    for record in records {
-        let record = record.map_err(|_| syntax_error())?;
-        let line = record.position().map_or(0, |p| p.line());
+    for (line, record) in records {
         if record.iter().all(|field| field.trim().is_empty()) {
             continue;
         }
@@ -310,7 +362,8 @@ pub fn parse_file_with_max_rows(data: &[u8], max_rows: u64) -> Result<Statement>
         if record.iter().any(|field| field.chars().count() > MAX_FIELD_CHARS) {
             return Err(CardCsvError(format!("Line {line} has a field that is too long.")));
         }
-        let row: HashMap<&str, &str> = header.iter().map(String::as_str).zip(record.iter()).collect();
+        let row: HashMap<&str, &str> =
+            header.iter().map(String::as_str).zip(record.iter().map(String::as_str)).collect();
         if get(&row, "StateType").trim().to_uppercase() != "BOOKED" {
             skipped += 1;
             continue;
@@ -323,4 +376,39 @@ pub fn parse_file_with_max_rows(data: &[u8], max_rows: u64) -> Result<Statement>
     }
     let currency = currencies.into_iter().next().map(str::to_string);
     Ok(Statement { currency, transactions, skipped_entries: skipped, ..Statement::default() })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Records;
+
+    fn records(text: &str, delim: u8) -> Vec<Result<(u64, Vec<String>), ()>> {
+        Records::new(text, delim).collect()
+    }
+
+    fn ok(line: u64, fields: &[&str]) -> Result<(u64, Vec<String>), ()> {
+        Ok((line, fields.iter().map(|f| f.to_string()).collect()))
+    }
+
+    #[test]
+    fn fields_quotes_and_line_numbers() {
+        let text = "a,b,c\r\n\n\"x,1\",\"say \"\"hi\"\"\",\"two\nlines\"\n,,\nlast;x";
+        assert_eq!(
+            records(text, b','),
+            vec![
+                ok(1, &["a", "b", "c"]),
+                ok(3, &["x,1", "say \"hi\"", "two\nlines"]),
+                ok(5, &["", "", ""]),
+                ok(6, &["last;x"]),
+            ]
+        );
+        assert_eq!(records("a;b\n1;\"\"\n", b';'), vec![ok(1, &["a", "b"]), ok(2, &["1", ""])]);
+        assert!(records("", b',').is_empty());
+    }
+
+    #[test]
+    fn syntax_errors() {
+        assert_eq!(records("\"open\n", b',').last(), Some(&Err(())));
+        assert_eq!(records("\"a\"b,c\n", b','), vec![Err(())]);
+    }
 }

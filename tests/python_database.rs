@@ -18,7 +18,7 @@ fn python_database(path: &std::path::Path) {
 
 #[test]
 fn the_python_database_works() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     let settings = feljosit::config::Settings::new(dir.path().to_path_buf());
     python_database(&settings.database_path());
     let mut conn = db::open(&settings).unwrap();
@@ -32,7 +32,7 @@ fn the_python_database_works() {
 
 fn users_can_log_in_and_use_the_pages(app: App) {
     feljosit::services::users::use_fast_hasher_for_tests();
-    let test = TestApp { app: std::sync::Arc::new(app), dir: tempfile::tempdir().unwrap() };
+    let test = TestApp { app: std::sync::Arc::new(app), dir: common::tempdir() };
     // The password hash of the Python version is valid.
     let (mut http, token) = test.login("anna");
     let page = http.get("/budget?month=2026-10").text();

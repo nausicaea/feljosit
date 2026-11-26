@@ -363,7 +363,7 @@ impl Ctx {
             .join("\x1f");
         let occurrence = self.seen.get(&base).copied().unwrap_or(0);
         self.seen.insert(base.clone(), occurrence + 1);
-        let digest = hex::encode(Sha256::digest(format!("{base}\x1f{occurrence}").as_bytes()));
+        let digest = crate::encoding::hex(Sha256::digest(format!("{base}\x1f{occurrence}").as_bytes()));
         format!("camt:{}", &digest[..64])
     }
 }
