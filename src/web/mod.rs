@@ -314,7 +314,7 @@ pub trait ParamsExt {
     fn required_int(&self, name: &str) -> Result<i64>;
     fn optional_id(&self, name: &str) -> Result<Option<i64>>;
     fn boolean(&self, name: &str, default: bool) -> Result<bool>;
-    fn date(&self, name: &str) -> Result<Option<chrono::NaiveDate>>;
+    fn date(&self, name: &str) -> Result<Option<crate::dates::Date>>;
 }
 
 pub fn parse_bool(value: &str) -> Option<bool> {
@@ -375,7 +375,7 @@ impl ParamsExt for Params {
     }
 
     /// An optional ISO date. An empty value is `None`.
-    fn date(&self, name: &str) -> Result<Option<chrono::NaiveDate>> {
+    fn date(&self, name: &str) -> Result<Option<crate::dates::Date>> {
         match self.get(name) {
             None | Some("") => Ok(None),
             Some(value) => parse_iso_date(value).map(Some).ok_or(AppError::Invalid),
@@ -384,13 +384,13 @@ impl ParamsExt for Params {
 }
 
 /// Parse a date `YYYY-MM-DD`.
-pub fn parse_iso_date(value: &str) -> Option<chrono::NaiveDate> {
+pub fn parse_iso_date(value: &str) -> Option<crate::dates::Date> {
     let value = value.trim();
     let bytes = value.as_bytes();
     if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
         return None;
     }
-    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()
+    crate::dates::parse(value, "%Y-%m-%d")
 }
 
 /// A template value from a serialisable Rust value.

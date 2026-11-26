@@ -382,8 +382,8 @@ pub fn scalar<T: rusqlite::types::FromSql>(conn: &Connection, sql: &str) -> T {
     conn.query_row(sql, [], |row| row.get(0)).unwrap()
 }
 
-pub fn date(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
-    chrono::NaiveDate::from_ymd_opt(y, m, d).unwrap()
+pub fn date(y: i32, m: u32, d: u32) -> feljosit::dates::Date {
+    feljosit::dates::ymd(y, m, d).unwrap()
 }
 
 pub const PRIVATE_IBAN: &str = "CH8900235000012345678";
@@ -409,7 +409,7 @@ pub fn plain_account(
 pub fn manual_tx(
     conn: &Connection,
     account: &feljosit::models::Account,
-    on: chrono::NaiveDate,
+    on: feljosit::dates::Date,
     amount: i64,
     category_id: Option<i64>,
 ) -> i64 {

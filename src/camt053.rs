@@ -16,11 +16,11 @@
 //!   files, the size of each file and the total uncompressed size.
 //! * Error messages do not include values from the file.
 
+use crate::dates::Date;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{Cursor, Read};
 
-use chrono::NaiveDate;
 use roxmltree::{Document, Node, ParsingOptions};
 use sha2::{Digest, Sha256};
 
@@ -86,15 +86,15 @@ pub struct Balance {
     pub type_code: String,
     pub amount_minor: i64,
     pub currency: String,
-    pub date: NaiveDate,
+    pub date: Date,
 }
 
 /// One booked movement. A batch entry produces one item for each transaction detail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatementTransaction {
     pub fingerprint: String,
-    pub booking_date: NaiveDate,
-    pub value_date: Option<NaiveDate>,
+    pub booking_date: Date,
+    pub value_date: Option<Date>,
     pub amount_minor: i64,
     pub currency: String,
     pub counterparty: String,
@@ -184,9 +184,9 @@ fn text(el: Option<Node<'_, '_>>, path: &str) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
-fn iso_date(raw: &str) -> Option<NaiveDate> {
+fn iso_date(raw: &str) -> Option<Date> {
     let raw: String = raw.chars().take(10).collect();
-    NaiveDate::parse_from_str(&raw, "%Y-%m-%d").or_else(|_| NaiveDate::parse_from_str(&raw, "%Y%m%d")).ok()
+    crate::dates::parse(&raw, "%Y-%m-%d").or_else(|| crate::dates::parse(&raw, "%Y%m%d"))
 }
 
 /// Check the part of an ISO 8601 date-time after the date, for example
@@ -230,7 +230,7 @@ fn valid_time_part(rest: &str) -> bool {
 }
 
 /// Read `<Dt>` or `<DtTm>` below `path`.
-fn parse_date(el: Option<Node<'_, '_>>, path: &str) -> Result<Option<NaiveDate>> {
+fn parse_date(el: Option<Node<'_, '_>>, path: &str) -> Result<Option<Date>> {
     let Some(target) = el.and_then(|e| find(e, path)) else {
         return Ok(None);
     };
@@ -430,7 +430,7 @@ fn entry_transactions(
             counterparty = truncate(&text(Some(entry), "AddtlNtryInf").unwrap_or_default(), 140);
         }
         let has_ref = entry_ref.is_some() || tx_ref.is_some();
-        let booking_text = booking.format("%Y-%m-%d").to_string();
+        let booking_text = crate::dates::format(booking, "%Y-%m-%d");
         let fingerprint = ctx.fingerprint(&[
             Part::Text(Some(account_key)),
             Part::Text(Some(&booking_text)),

@@ -13,7 +13,7 @@ fn setup() -> (rusqlite::Connection, feljosit::models::User, Account) {
     (conn, user, account)
 }
 
-fn jan() -> chrono::NaiveDate {
+fn jan() -> feljosit::dates::Date {
     date(2026, 1, 1)
 }
 

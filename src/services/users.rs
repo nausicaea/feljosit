@@ -6,12 +6,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
-use chrono::{DateTime, Duration, Utc};
 use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
 use super::defaults::create_default_categories;
 use super::{Error, Result};
+use crate::dates::{self, Timestamp};
 use crate::db::{datetime_text, now, now_text, parse_datetime};
 use crate::models::User;
 
@@ -238,7 +238,7 @@ pub fn authenticate(conn: &Connection, username: &str, password: &str) -> Result
         if failed >= MAX_FAILED_LOGINS {
             conn.execute(
                 "UPDATE users SET failed_logins = 0, locked_until = ?1 WHERE id = ?2",
-                params![datetime_text(now() + Duration::minutes(LOCKOUT_MINUTES)), user.id],
+                params![datetime_text(dates::add_seconds(now(), LOCKOUT_MINUTES * 60)), user.id],
             )?;
         } else {
             conn.execute("UPDATE users SET failed_logins = ?1 WHERE id = ?2", params![failed, user.id])?;
@@ -268,7 +268,7 @@ pub fn reset_password(conn: &Connection, username: &str, password: &str) -> Resu
 pub struct NewSession {
     pub token: String,
     pub csrf_token: String,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Timestamp,
 }
 
 /// A login session from the database.
@@ -284,7 +284,7 @@ pub struct Session {
 pub fn start_session(conn: &Connection, user_id: i64, lifetime_seconds: i64) -> Result<NewSession> {
     let token = random_token();
     let csrf = random_token();
-    let expires = now() + Duration::seconds(lifetime_seconds);
+    let expires = dates::add_seconds(now(), lifetime_seconds);
     let created = now_text();
     conn.execute(
         "INSERT INTO sessions (token_hash, user_id, csrf_token, flash_message, flash_is_error, \

@@ -7,10 +7,10 @@
 use std::fs;
 use std::path::Path;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::config::Settings;
+use crate::dates::{self, Date, Timestamp};
 
 /// The migrations in order: revision and SQL.
 const MIGRATIONS: &[(&str, &str)] = &[
@@ -21,13 +21,13 @@ const MIGRATIONS: &[(&str, &str)] = &[
 /// The format of a date-time value in the database (UTC, as SQLAlchemy writes it).
 pub const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.6f";
 
-pub fn now() -> DateTime<Utc> {
-    Utc::now()
+pub fn now() -> Timestamp {
+    dates::now()
 }
 
 /// The text of a date-time value for the database.
-pub fn datetime_text(value: DateTime<Utc>) -> String {
-    value.naive_utc().format(DATETIME_FORMAT).to_string()
+pub fn datetime_text(value: Timestamp) -> String {
+    dates::format_utc(value, DATETIME_FORMAT)
 }
 
 /// The current time as text for the database.
@@ -36,20 +36,17 @@ pub fn now_text() -> String {
 }
 
 /// Parse a date-time value from the database.
-pub fn parse_datetime(text: &str) -> Option<DateTime<Utc>> {
-    NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S%.f")
-        .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S%.f"))
-        .ok()
-        .map(|naive| naive.and_utc())
+pub fn parse_datetime(text: &str) -> Option<Timestamp> {
+    dates::parse_utc(text, "%Y-%m-%d %H:%M:%S%.f").or_else(|| dates::parse_utc(text, "%Y-%m-%dT%H:%M:%S%.f"))
 }
 
 /// Parse a date value (`YYYY-MM-DD`) from the database.
-pub fn parse_date(text: &str) -> NaiveDate {
-    NaiveDate::parse_from_str(text.get(..10).unwrap_or(text), "%Y-%m-%d").unwrap_or(NaiveDate::MIN)
+pub fn parse_date(text: &str) -> Date {
+    dates::parse(text.get(..10).unwrap_or(text), "%Y-%m-%d").unwrap_or(Date::MIN)
 }
 
-pub fn date_text(value: NaiveDate) -> String {
-    value.format("%Y-%m-%d").to_string()
+pub fn date_text(value: Date) -> String {
+    dates::format(value, "%Y-%m-%d")
 }
 
 fn configure(conn: &Connection) -> rusqlite::Result<()> {

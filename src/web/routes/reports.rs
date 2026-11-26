@@ -1,6 +1,6 @@
 //! Reports: visualisations and statistics.
 
-use chrono::{Datelike, NaiveDate};
+use crate::dates::{self, Date};
 use minijinja::context;
 use minijinja::value::Value;
 
@@ -19,13 +19,13 @@ const DEFAULT_PERIOD: &str = "12m";
 /// The maximum length of a custom period (20 years). This limits the size of the charts.
 pub const MAX_MONTHS: i32 = 240;
 
-fn min_date() -> NaiveDate {
-    NaiveDate::from_ymd_opt(1900, 1, 1).expect("valid")
+fn min_date() -> Date {
+    crate::dates::ymd(1900, 1, 1).expect("valid")
 }
 
 /// Later dates are not possible: the month calculations must stay below year 10000.
-fn max_date() -> NaiveDate {
-    NaiveDate::from_ymd_opt(9998, 12, 31).expect("valid")
+fn max_date() -> Date {
+    crate::dates::ymd(9998, 12, 31).expect("valid")
 }
 
 fn period_labels() -> Value {
@@ -36,12 +36,12 @@ fn is_period(value: &str) -> bool {
     value == ALL_PERIOD || PERIODS.iter().any(|(k, ..)| *k == value)
 }
 
-fn today() -> NaiveDate {
-    chrono::Local::now().date_naive()
+fn today() -> Date {
+    crate::dates::today()
 }
 
 /// The range of a preset period: the last full months, including the current month.
-fn preset_range(period: &str, today: NaiveDate) -> (NaiveDate, NaiveDate) {
+fn preset_range(period: &str, today: Date) -> (Date, Date) {
     let months = PERIODS.iter().find(|(k, ..)| *k == period).map_or(12, |(_, m, _)| *m);
     let end_month = month_start(today);
     (add_months(end_month, -(months - 1)), last_day_of_month(end_month))
@@ -53,10 +53,7 @@ fn preset_range(period: &str, today: NaiveDate) -> (NaiveDate, NaiveDate) {
 /// current month, or at the end of the month of the last transaction if that is later.
 /// If the range is longer than [`MAX_MONTHS`], only the last [`MAX_MONTHS`] months are
 /// used. If there are no transactions, the range is the current month.
-pub fn all_range(
-    data_range: Option<(NaiveDate, NaiveDate)>,
-    today: NaiveDate,
-) -> (NaiveDate, NaiveDate, bool) {
+pub fn all_range(data_range: Option<(Date, Date)>, today: Date) -> (Date, Date, bool) {
     let end_month = month_start(today);
     let Some((first, last)) = data_range else {
         return (end_month, last_day_of_month(end_month), false);
@@ -72,24 +69,24 @@ pub fn all_range(
 /// If there is no end date, the end is today. If there is no start date, the start is
 /// the first day of the month 11 months before the end month.
 pub fn custom_range(
-    start: Option<NaiveDate>,
-    end: Option<NaiveDate>,
-    today: NaiveDate,
-) -> std::result::Result<(NaiveDate, NaiveDate), String> {
+    start: Option<Date>,
+    end: Option<Date>,
+    today: Date,
+) -> std::result::Result<(Date, Date), String> {
     let end = end.unwrap_or(today);
-    let in_range = |d: NaiveDate| min_date() <= d && d <= max_date();
+    let in_range = |d: Date| min_date() <= d && d <= max_date();
     if !in_range(end) || !start.is_none_or(in_range) {
         return Err(format!(
             "Type dates from {} to {}.",
-            min_date().format("%d.%m.%Y"),
-            max_date().format("%d.%m.%Y")
+            crate::dates::format(min_date(), "%d.%m.%Y"),
+            crate::dates::format(max_date(), "%d.%m.%Y")
         ));
     }
     let start = start.unwrap_or_else(|| add_months(month_start(end), -11).max(min_date()));
     if start > end {
         return Err("The start date must be on or before the end date.".into());
     }
-    let months = (end.year() - start.year()) * 12 + end.month0() as i32 - start.month0() as i32 + 1;
+    let months = dates::month_index(end) - dates::month_index(start) + 1;
     if months > MAX_MONTHS {
         return Err(format!("The period must be a maximum of {} years.", MAX_MONTHS / 12));
     }
@@ -98,8 +95,8 @@ pub fn custom_range(
 
 /// The period of a report page, from the query parameters.
 struct ReportPeriod {
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
     /// The preset period, or `None` for a custom period.
     period: Option<String>,
     error: Option<String>,
@@ -113,8 +110,8 @@ impl ReportPeriod {
     fn query(&self) -> Value {
         match &self.period {
             None => Value::from_pairs([
-                ("from", self.start.format("%Y-%m-%d").to_string()),
-                ("to", self.end.format("%Y-%m-%d").to_string()),
+                ("from", crate::dates::format(self.start, "%Y-%m-%d")),
+                ("to", crate::dates::format(self.end, "%Y-%m-%d")),
             ]),
             Some(period) => Value::from_pairs([("period", period.clone())]),
         }
@@ -133,8 +130,8 @@ impl ReportPeriod {
             max_years => MAX_MONTHS / 12,
             form_from => self.form_from.clone(),
             form_to => self.form_to.clone(),
-            start => self.start.format("%Y-%m-%d").to_string(),
-            end => self.end.format("%Y-%m-%d").to_string(),
+            start => crate::dates::format(self.start, "%Y-%m-%d"),
+            end => crate::dates::format(self.end, "%Y-%m-%d"),
             period_query => self.query(),
         }
     }
@@ -185,7 +182,7 @@ fn resolve_period(ctx: &Ctx<'_>, auth: &Auth) -> Result<ReportPeriod> {
         }
         None => preset_range(&period, today),
     };
-    let iso = |d: NaiveDate| d.format("%Y-%m-%d").to_string();
+    let iso = |d: Date| crate::dates::format(d, "%Y-%m-%d");
     Ok(ReportPeriod {
         start,
         end,
@@ -201,11 +198,11 @@ fn resolve_period(ctx: &Ctx<'_>, auth: &Auth) -> Result<ReportPeriod> {
 ///
 /// The labels are on calendar boundaries, for example January, April, July and October
 /// for a step of 3 months.
-fn month_labels(months: &[NaiveDate]) -> (usize, usize) {
+fn month_labels(months: &[Date]) -> (usize, usize) {
     let step = charts::month_label_step(months.len(), MAX_X_LABELS);
     match months.first() {
         None => (step, 0),
-        Some(first) => (step, (first.year() * 12 + first.month0() as i32) as usize),
+        Some(first) => (step, dates::month_index(*first) as usize),
     }
 }
 
@@ -228,7 +225,7 @@ pub fn reports_page(ctx: &mut Ctx<'_>) -> Result<Response> {
     let fmt_axis = axis_formatter(&currency);
     let flows = reports::monthly_flows(ctx.db, auth.user.id, start, end)?;
     let labels: Vec<String> = flows.iter().map(|f| month_short(f.month)).collect();
-    let months: Vec<NaiveDate> = flows.iter().map(|f| f.month).collect();
+    let months: Vec<Date> = flows.iter().map(|f| f.month).collect();
     let (label_step, label_offset) = month_labels(&months);
     let flow_chart = charts::grouped_bars(
         &labels,
@@ -274,10 +271,10 @@ const SORTS: &[(&str, &str)] =
     &[("budget", "Budget order"), ("total", "Largest total"), ("change", "Largest increase")];
 const COUNTERPARTY_SORTS: &[(&str, &str)] = &[("total", "Largest total"), ("change", "Largest increase")];
 
-fn bucket_label(start: NaiveDate, size: u32) -> String {
+fn bucket_label(start: Date, size: u32) -> String {
     match size {
-        12 => start.year().to_string(),
-        3 => format!("Q{} {:02}", start.month0() / 3 + 1, start.year().rem_euclid(100)),
+        12 => dates::year(start).to_string(),
+        3 => format!("Q{} {:02}", dates::month0(start) / 3 + 1, dates::year(start).rem_euclid(100)),
         _ => month_short(start),
     }
 }
@@ -296,7 +293,7 @@ pub fn sorted_rows(rows: &[SpendingSeries], sort: &str) -> Vec<SpendingSeries> {
     rows
 }
 
-fn month_chart(months: &[NaiveDate], monthly: &[i64], currency: &str) -> Chart {
+fn month_chart(months: &[Date], monthly: &[i64], currency: &str) -> Chart {
     let (label_step, label_offset) = month_labels(months);
     let fmt = axis_formatter(currency);
     charts::grouped_bars(
@@ -411,8 +408,8 @@ pub fn counterparty_report_page(ctx: &mut Ctx<'_>) -> Result<Response> {
 mod tests {
     use super::*;
 
-    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    fn d(y: i32, m: u32, day: u32) -> Date {
+        crate::dates::ymd(y, m, day).unwrap()
     }
 
     #[test]

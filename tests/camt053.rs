@@ -2,9 +2,9 @@
 
 mod common;
 
-use chrono::NaiveDate;
 use common::{fixture, zip_files};
 use feljosit::camt053::{self, Limits, parse_file, parse_file_with, parse_xml, parse_xml_with};
+use feljosit::dates::Date;
 
 fn doc_version(entries: &str, version: &str) -> Vec<u8> {
     format!(
@@ -31,8 +31,8 @@ fn simple_entry() -> String {
     entry("10.00", "DBIT", "", "")
 }
 
-fn date(y: i32, m: u32, d: u32) -> NaiveDate {
-    NaiveDate::from_ymd_opt(y, m, d).unwrap()
+fn date(y: i32, m: u32, d: u32) -> Date {
+    feljosit::dates::ymd(y, m, d).unwrap()
 }
 
 fn error_of(data: &[u8]) -> String {

@@ -1,8 +1,8 @@
 //! Accounts and manual transactions.
 
+use crate::dates::Date;
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{Error, Result};
@@ -69,7 +69,7 @@ pub struct NewAccount<'a> {
     /// `None`: the type gives the budget setting.
     pub on_budget: Option<bool>,
     pub starting_balance_minor: i64,
-    pub starting_date: Option<NaiveDate>,
+    pub starting_date: Option<Date>,
 }
 
 impl<'a> NewAccount<'a> {
@@ -121,7 +121,7 @@ pub fn create_account(conn: &Connection, user_id: i64, new: &NewAccount<'_>) -> 
     // Movements to this IBAN that are imported already can be transfers now.
     update_incoming_transfers(conn, &account)?;
     if new.starting_balance_minor != 0 {
-        let on = new.starting_date.unwrap_or_else(|| chrono::Local::now().date_naive());
+        let on = new.starting_date.unwrap_or_else(crate::dates::today);
         add_starting_balance(conn, &account, new.starting_balance_minor, on)?;
     }
     Ok(account)
@@ -141,12 +141,7 @@ pub fn income_category_for_starting_balance(conn: &Connection, user_id: i64) -> 
         .optional()?)
 }
 
-pub fn add_starting_balance(
-    conn: &Connection,
-    account: &Account,
-    amount_minor: i64,
-    on: NaiveDate,
-) -> Result<()> {
+pub fn add_starting_balance(conn: &Connection, account: &Account, amount_minor: i64, on: Date) -> Result<()> {
     let category =
         if account.on_budget { income_category_for_starting_balance(conn, account.user_id)? } else { None };
     let fingerprint = format!("start:{}", account.id);
@@ -176,7 +171,7 @@ pub fn add_starting_balance(
 /// The values of a manual transaction.
 #[derive(Debug, Clone)]
 pub struct ManualTransaction<'a> {
-    pub booking_date: NaiveDate,
+    pub booking_date: Date,
     pub amount_minor: i64,
     pub counterparty: &'a str,
     pub memo: &'a str,
