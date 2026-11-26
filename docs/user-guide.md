@@ -139,11 +139,47 @@ The page shows:
 - Spending by category.
 - Net worth (all accounts, one chart for each currency).
 
+To compare the categories over time, click "Spending by category" below the
+title. See "Procedure: find expenses that you can reduce". The two report pages
+use the same period.
+
 The reports use only budget accounts, except the net worth. Transfers are not included.
 
 The charts show one value for each month. If the period starts or stops in a month, that month includes only the transactions in the period. The net worth of the last month is the net worth on the "To" date.
 
 You can save or share the address of a custom period, for example `/reports?from=2026-01-01&to=2026-06-30`.
+
+## Procedure: find expenses that you can reduce
+
+1. Click "Reports".
+2. Click "Spending by category".
+3. Select a period of 6 months or more. Then the page shows the change.
+4. Click "Largest total" or "Largest increase" to sort the categories.
+5. Click a category to see the details.
+
+The table shows one row for each expense category with spending in the period:
+
+- "Total", "Share" and "Per month": the spending of the category in the period.
+- "Last 3 months": the average spending per month in the last 3 months.
+- "Change": the average of the last 3 months against the average of the months
+  before. An increase of 10 % or more is red. A decrease of 10 % or more is green.
+- One column for each month. For a period of more than 12 months, one column for
+  each quarter. For a period of more than 36 months, one column for each year.
+  A quarter or year column shows the average spending per month. Thus a quarter
+  that is only partly in the period is comparable with the others.
+- A colour shows that the spending is more than the average per month of the
+  category: light for 10 % more, dark for 100 % or more.
+
+The details of a category show the spending per month and the counterparties with
+the most spending. Use them to find where the money goes, for example the shop or
+the restaurant.
+
+The report uses the same transactions as "Spending by category" on the overview:
+expense categories and uncategorised outflows of budget accounts, without
+transfers. A refund decreases the spending of its category.
+
+TIP: Categorise all transactions before you use the report. Uncategorised
+outflows are in one row, "Uncategorised".
 
 ## Procedure: change your password
 

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% from "macros.html" import bar_chart with context %}
+{% block title %}Spending by category{% endblock %}
+{% macro change(row) -%}
+{%- if row.change_percent is none -%}—
+{%- else -%}{%- set pct = row.change_percent | round | int -%}<span class="change {{ 'up' if pct >= 10 else ('down' if pct <= -10 else '') }}">{{ '%+d %%' % pct if pct else '0 %' }}</span>
+{%- endif -%}
+{%- endmacro %}
+{% macro category_row(row, show_group) %}
+<tr class="{{ 'selected' if detail and detail.row is sameas row }}">
+  <th scope="row"><a href="/reports/categories?{{ dict(category=category_key(row), sort=sort, **period_query) | urlencode }}#detail">{{ row.name }}</a>{% if show_group and row.category_id is not none %}<div class="small">{{ row.group }}</div>{% endif %}</th>
+  <td class="num strong">{{ row.total | money }}</td>
+  <td class="num">{{ '%.1f %%' % row.share }}</td>
+  <td class="num">{{ row.average_per_month | money }}</td>
+  {% if data.has_trend %}
+  <td class="num">{{ row.recent_average | money }}</td>
+  <td class="num">{{ change(row) }}</td>
+  {% endif %}
+  {% for v in row.values %}<td class="num heat-{{ heat(v, row.average_per_month) }}{{ ' first-bucket' if loop.first }}">{{ v | money }}</td>{% endfor %}
+</tr>
+{% endmacro %}
+{% block content %}
+{% set base = '/reports/categories' %}
+{% include "_report_head.html" %}
+
+{% if not data.rows %}
+<section class="card"><p>No expenses in this period.</p></section>
+{% else %}
+<section class="card">
+  <div class="page-head">
+    <h2>Spending by category</h2>
+    <nav class="tabs" aria-label="Sort order">
+      {% for s, label in sorts.items() %}{% if s != 'change' or data.has_trend %}<a href="/reports/categories?{{ dict(sort=s, **period_query) | urlencode }}" {% if s == sort %}aria-current="page"{% endif %}>{{ label }}</a>{% endif %}{% endfor %}
+    </nav>
+  </div>
+  <p class="hint">
+    {% if data.bucket_months == 1 %}The columns on the right show the spending of each month.
+    {% else %}The columns on the right show the average spending per month in each {{ 'quarter' if data.bucket_months == 3 else 'year' }}. Thus a {{ 'quarter' if data.bucket_months == 3 else 'year' }} that is only partly in the period is comparable with the others.{% endif %}
+    A colour shows that the spending is more than the average per month of the category: light for 10 % more, dark for 100 % more.
+    {% if data.has_trend %}"Change" compares the average of the last 3 months with the average of the months before. An increase of 10 % or more is red.{% endif %}
+    Click a category to see the months and the counterparties.
+  </p>
+  <div class="table-scroll">
+  <table class="heat">
+    <thead>
+      <tr>
+        <th scope="col">Category</th>
+        <th scope="col" class="num">Total</th>
+        <th scope="col" class="num">Share</th>
+        <th scope="col" class="num">Per month</th>
+        {% if data.has_trend %}
+        <th scope="col" class="num" title="Average per month of the last 3 months">Last 3 months</th>
+        <th scope="col" class="num">Change</th>
+        {% endif %}
+        {% for label in bucket_labels %}<th scope="col" class="num{{ ' first-bucket' if loop.first }}">{{ label }}</th>{% endfor %}
+      </tr>
+    </thead>
+    {% if sort == 'budget' %}
+    {% for group in data.groups %}
+    <tbody{% if group.uncategorised %} class="uncategorised"{% endif %}>
+      {% if not group.uncategorised %}
+      <tr class="group-row">
+        <th scope="rowgroup">{{ group.name }}</th>
+        <td class="num">{{ group.total | money }}</td>
+        <td colspan="{{ 4 if data.has_trend else 2 }}"></td>
+        {% for v in group.values %}<td class="num{{ ' first-bucket' if loop.first }}">{{ v | money }}</td>{% endfor %}
+      </tr>
+      {% endif %}
+      {% for row in group.rows %}{{ category_row(row, false) }}{% endfor %}
+    </tbody>
+    {% endfor %}
+    {% else %}
+    <tbody>
+      {% for row in rows %}{{ category_row(row, true) }}{% endfor %}
+    </tbody>
+    {% endif %}
+    <tfoot>
+      <tr>
+        <th scope="row">Total</th>
+        <td class="num">{{ data.total | money }}</td>
+        <td></td>
+        <td class="num">{{ (data.total / data.months | length) | round | int | money }}</td>
+        {% if data.has_trend %}<td colspan="2"></td>{% endif %}
+        {% for v in data.totals %}<td class="num{{ ' first-bucket' if loop.first }}">{{ v | money }}</td>{% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+</section>
+
+{% if detail %}
+{% set row = detail.row %}
+<section class="card" id="detail">
+  <div class="page-head">
+    <h2>{{ row.name }}{% if row.category_id is not none %} <span class="small">({{ row.group }})</span>{% endif %}</h2>
+    <a href="/reports/categories?{{ dict(sort=sort, **period_query) | urlencode }}">Close</a>
+  </div>
+  <dl class="facts">
+    <div><dt>Total</dt><dd>{{ row.total | money }}</dd></div>
+    <div><dt>Average per month</dt><dd>{{ row.average_per_month | money }}</dd></div>
+    <div><dt>Highest month</dt><dd>{{ row.monthly | max | money }}</dd></div>
+    {% if data.has_trend %}
+    <div><dt>Last 3 months, per month</dt><dd>{{ row.recent_average | money }}</dd></div>
+    <div><dt>Change</dt><dd>{{ change(row) }}</dd></div>
+    {% endif %}
+  </dl>
+  <h3>Spending per month</h3>
+  {{ bar_chart(detail.chart, 'Spending per month: ' ~ row.name) }}
+  <h3>Counterparties with the most spending</h3>
+  {% if detail.counterparties %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th scope="col">Counterparty</th><th scope="col" class="num">Transactions</th><th scope="col" class="num">Total</th><th scope="col" class="num">Per transaction</th><th scope="col" class="num">Share</th></tr></thead>
+    <tbody>
+    {% for c in detail.counterparties %}
+      <tr>
+        <td>{{ c.name }}</td>
+        <td class="num">{{ c.count }}</td>
+        <td class="num">{{ c.total | money }}</td>
+        <td class="num">{{ (c.total / c.count) | round | int | money }}</td>
+        <td class="num">{{ '%.1f %%' % (c.total / row.total * 100) if row.total > 0 else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <p><a href="/transactions?{{ 'uncategorised=true' if row.category_id is none else 'category=' ~ row.category_id }}">Show all transactions of this category</a> (all dates).</p>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}
