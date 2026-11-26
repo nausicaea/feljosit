@@ -154,5 +154,21 @@ details { margin-top: 12px; }
   .transactions thead { display: none; }
   .transactions tr { display: grid; grid-template-columns: 1fr auto; border-bottom: 1px solid var(--border); padding: 6px 0; }
   .transactions td { border: none; padding: 3px 4px; }
-  table.budget input[name="amount"] { width: 6.5rem; }
+  /* Four amount columns do not fit. Each row shows the category on one line and
+     the three amounts below it, each with its column name from data-label. */
+  table.budget, table.budget tbody { display: block; }
+  table.budget thead { display: none; }
+  table.budget tr {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px 8px;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+  }
+  table.budget tr.group-row { background: var(--zero-bg); }
+  table.budget th, table.budget td { border: none; padding: 2px 0; min-width: 0; overflow-wrap: anywhere; }
+  table.budget tr > th { grid-column: 1 / -1; }
+  table.budget td::before {
+    content: attr(data-label); display: block;
+    font-size: 0.75rem; font-weight: 400; color: var(--muted);
+  }
+  table.budget input[name="amount"] { width: 100%; min-width: 0; }
+  table.budget .pill { min-width: 0; max-width: 100%; padding: 2px 6px; }
 }

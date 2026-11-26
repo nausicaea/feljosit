@@ -38,14 +38,14 @@
   <tbody>
     <tr class="group-row">
       <th scope="rowgroup">{{ group.name }}</th>
-      <td class="num">{{ group.assigned | money }}</td>
-      <td class="num">{{ group.activity | money }}</td>
-      <td class="num">{{ group.available | money }}</td>
+      <td class="num" data-label="Assigned">{{ group.assigned | money }}</td>
+      <td class="num" data-label="Activity">{{ group.activity | money }}</td>
+      <td class="num" data-label="Available">{{ group.available | money }}</td>
     </tr>
     {% for row in group.rows %}
     <tr id="cat-{{ row.category_id }}">
       <th scope="row"><a href="/transactions?category={{ row.category_id }}">{{ row.name }}</a></th>
-      <td class="num">
+      <td class="num" data-label="Assigned">
         <form method="post" action="/budget/assign" class="assign">
           {{ csrf() }}
           <input type="hidden" name="category_id" value="{{ row.category_id }}">
@@ -53,8 +53,8 @@
           <input name="amount" value="{{ row.assigned | money }}" inputmode="decimal" aria-label="Assigned to {{ row.name }}" data-autosubmit-change>
         </form>
       </td>
-      <td class="num">{{ amount(row.activity) }}</td>
-      <td class="num"><span class="pill {{ 'neg' if row.available < 0 else ('pos' if row.available > 0 else 'zero') }}">{{ row.available | money }}</span></td>
+      <td class="num" data-label="Activity">{{ amount(row.activity) }}</td>
+      <td class="num" data-label="Available"><span class="pill {{ 'neg' if row.available < 0 else ('pos' if row.available > 0 else 'zero') }}">{{ row.available | money }}</span></td>
     </tr>
     {% endfor %}
   </tbody>
