@@ -128,6 +128,19 @@ The transactions, the assigned amounts and the rules of the category do not chan
 The rule with the lowest priority number applies first. If no rule applies,
 the application uses the category of the last transaction with the same counterparty.
 
+## Procedure: edit a rule
+
+1. Click "Categories".
+2. Go to "Categorisation rules".
+3. Click "Edit" in the row of the rule.
+4. Change the field, the match, the text, the category or the priority.
+5. Click "Save".
+6. To apply the changed rule to the existing uncategorised transactions, click
+   "Apply the rules to uncategorised transactions".
+
+The changed rule applies to the next imports. Transactions that have a category
+keep it.
+
 ## Procedure: assign money
 
 1. Click "Budget".
