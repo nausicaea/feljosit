@@ -69,11 +69,12 @@ code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 16px 0; }
 .narrow { max-width: 420px; margin: 40px auto; }
 .stack { display: grid; gap: 12px; }
-.grid-form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); align-items: end; }
+.grid-form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); align-items: end; }
+.grid-form > * { min-width: 0; }
 .inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 form.inline { display: inline; }
 .columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
-label { display: grid; gap: 4px; font-size: 0.9rem; color: var(--muted); }
+label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: 0.9rem; color: var(--muted); }
 label.check { display: flex; align-items: center; gap: 6px; }
 input, select, button {
   font: inherit; color: var(--text); background: var(--surface);
@@ -86,6 +87,8 @@ button { background: var(--accent); color: var(--accent-text); border-color: var
 button.secondary { background: var(--surface); color: var(--text); border-color: var(--border); margin-top: 12px; }
 button.link { background: none; border: none; color: var(--series); padding: 0; min-height: 0; font-weight: 400; text-decoration: underline; }
 select.missing { border-color: var(--expense); }
+/* A select is as wide as its longest option. In a grid, it must not be wider than its column. */
+select { max-width: 100%; min-width: 0; }
 
 .flash { padding: 10px 12px; border-radius: 8px; margin: 12px 0; }
 .flash.ok { background: var(--pos-bg); }
