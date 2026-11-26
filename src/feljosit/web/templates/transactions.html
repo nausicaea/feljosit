@@ -25,9 +25,9 @@
   <tbody>
   {% for t in transactions %}
     <tr>
-      <td class="nowrap">{{ t.booking_date | swiss_date }}</td>
-      <td>{{ t.account.name }}</td>
-      <td>
+      <td class="nowrap tx-date">{{ t.booking_date | swiss_date }}</td>
+      <td class="tx-account">{{ t.account.name }}</td>
+      <td class="tx-party">
         <strong>{{ t.counterparty or '—' }}</strong>
         {% if show_iban and t.counterparty_iban %}<div class="small mono">IBAN {{ t.counterparty_iban | iban }}</div>{% endif %}
         {% if t.description %}<div class="small">{{ t.description }}</div>{% endif %}
@@ -37,7 +37,7 @@
           <input name="memo" value="{{ t.memo }}" maxlength="500" placeholder="Memo" aria-label="Memo" data-autosubmit-change>
         </form>
       </td>
-      <td>
+      <td class="tx-category">
         {% if t.account.on_budget %}
         <form method="post" action="/transactions/{{ t.id }}/category">
           {{ csrf() }}<input type="hidden" name="return_to" value="{{ return_to }}">
@@ -53,7 +53,7 @@
         {% endif %}
         {% else %}<span class="small">Tracking account</span>{% endif %}
       </td>
-      <td class="num nowrap">{{ amount(t.amount_minor, t.currency) }}
+      <td class="num nowrap tx-amount">{{ amount(t.amount_minor, t.currency) }}
         {% if t.source == 'manual' %}
         <form method="post" action="/transactions/{{ t.id }}/delete" class="inline" data-confirm="Delete this transaction?">
           {{ csrf() }}<input type="hidden" name="return_to" value="{{ return_to }}">

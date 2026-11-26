@@ -163,9 +163,22 @@ ul.plain li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 details { margin-top: 12px; }
 
 @media (max-width: 640px) {
+  /* One block per transaction: date and amount, then the counterparty and the
+     category over the full width, then the account. */
   .transactions thead { display: none; }
-  .transactions tr { display: grid; grid-template-columns: 1fr auto; border-bottom: 1px solid var(--border); padding: 6px 0; }
-  .transactions td { border: none; padding: 3px 4px; }
+  .transactions tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "date amount" "party party" "category category" "account account";
+    border-bottom: 1px solid var(--border); padding: 6px 0;
+  }
+  .transactions td { border: none; padding: 3px 4px; min-width: 0; }
+  .transactions td[colspan] { grid-column: 1 / -1; }
+  .transactions .tx-date { grid-area: date; color: var(--muted); }
+  .transactions .tx-amount { grid-area: amount; font-weight: 600; }
+  .transactions .tx-party { grid-area: party; }
+  .transactions .tx-category { grid-area: category; }
+  .transactions .tx-category select { width: 100%; max-width: none; }
+  .transactions .tx-account { grid-area: account; color: var(--muted); font-size: 0.8rem; }
   /* Four amount columns do not fit. Each row shows the category on one line and
      the three amounts below it, each with its column name from data-label. */
   table.budget, table.budget tbody { display: block; }
