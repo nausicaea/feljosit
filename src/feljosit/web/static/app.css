@@ -206,3 +206,20 @@ table.heat tfoot th, table.heat tfoot td { font-weight: 600; border-top: 2px sol
 .heat-4 { background: color-mix(in srgb, var(--expense) var(--heat-4), transparent); }
 .change.up { color: var(--neg); font-weight: 600; }
 .change.down { color: var(--pos); font-weight: 600; }
+
+/* Categories: drag-and-drop between groups. The handle shows only with JavaScript. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+.drag-handle { display: none; cursor: grab; color: var(--muted); padding: 0 4px; font-size: 1.1rem; user-select: none; }
+.js-dnd .drag-handle { display: inline-block; }
+.category-list { min-height: 2.5rem; border-radius: 8px; }
+.category-list.drop-target { outline: 2px dashed var(--series); outline-offset: 4px; }
+.category-list li.dragging { opacity: 0.5; }
+.move-form select { max-width: 11rem; font-size: 0.85rem; min-height: 28px; padding: 2px 6px; }
+.category-list li { gap: 6px 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.category-list li:last-child { border-bottom: none; }
+.category-list li .rename-form { flex: 1 1 10rem; min-width: 0; }
+.category-list li .rename-form input { width: 100%; }
+.move-form select { max-width: 9rem; }
