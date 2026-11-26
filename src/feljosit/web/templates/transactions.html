@@ -13,9 +13,10 @@
   <label>Search <input name="q" value="{{ q }}" maxlength="100" type="search"></label>
   <label class="check"><input type="checkbox" name="uncategorised" value="true" {% if filter_uncategorised %}checked{% endif %} data-autosubmit-change> Only uncategorised</label>
   <label class="check"><input type="checkbox" name="matched" value="true" {% if filter_matched %}checked{% endif %} data-autosubmit-change> Only matched transfers</label>
+  <label class="check"><input type="checkbox" name="iban" value="true" {% if show_iban %}checked{% endif %} data-autosubmit-change> Show account numbers</label>
   {% if filter_category %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
   <button type="submit">Filter</button>
-  {% if query_string %}<a href="/transactions">Remove the filters</a>{% endif %}
+  {% if filters_active %}<a href="/transactions{{ '?' ~ display_query if display_query }}">Remove the filters</a>{% endif %}
 </form>
 
 <p class="hint">{{ total }} transactions.</p>
@@ -28,6 +29,7 @@
       <td>{{ t.account.name }}</td>
       <td>
         <strong>{{ t.counterparty or '—' }}</strong>
+        {% if show_iban and t.counterparty_iban %}<div class="small mono">IBAN {{ t.counterparty_iban | iban }}</div>{% endif %}
         {% if t.description %}<div class="small">{{ t.description }}</div>{% endif %}
         {% if t.reference %}<div class="small mono">Ref. {{ t.reference }}</div>{% endif %}
         <form method="post" action="/transactions/{{ t.id }}/memo" class="memo">

@@ -115,6 +115,18 @@ For a transfer between your accounts, select "Transfer". A transfer from a budge
 account to a tracking account (for example to pillar 3a) needs a category,
 because the money leaves the budget.
 
+## Procedure: show the account number of the counterparty
+
+1. Click "Transactions".
+2. Select "Show account numbers".
+
+Below the name of the counterparty, the list shows its IBAN, if the bank statement
+contains it. The option stays when you filter, go to a different page of the list,
+or change a transaction.
+
+The search also finds IBANs. Type a part of the IBAN with at least 4 characters
+and one digit, with or without spaces, for example "CH93 0076".
+
 ## Procedure: move a category into a different group
 
 1. Click "Categories".
@@ -145,6 +157,19 @@ The transactions, the assigned amounts and the rules of the category do not chan
 
 The rule with the lowest priority number applies first. If no rule applies,
 the application uses the category of the last transaction with the same counterparty.
+
+## Procedure: edit a rule
+
+1. Click "Categories".
+2. Go to "Categorisation rules".
+3. Click "Edit" in the row of the rule.
+4. Change the field, the match, the text, the category or the priority.
+5. Click "Save".
+6. To apply the changed rule to the existing uncategorised transactions, click
+   "Apply the rules to uncategorised transactions".
+
+The changed rule applies to the next imports. Transactions that have a category
+keep it.
 
 ## Procedure: assign money
 

@@ -150,6 +150,26 @@ def set_category(db: Session, tx: Transaction, category_id: int | None) -> Trans
     return partner
 
 
+def _checked_rule_values(
+    db: Session, user_id: int, pattern: str, priority: int, category_id: int
+) -> str:
+    """Check the values of a rule. Return the pattern without spaces at the ends."""
+    pattern = pattern.strip()
+    if not 1 <= len(pattern) <= 140:
+        raise ServiceError("The pattern must have 1 to 140 characters.")
+    if not 0 <= priority <= 10_000:
+        raise ServiceError("The priority must be between 0 and 10000.")
+    owned_category(db, user_id, category_id)
+    return pattern
+
+
+def owned_rule(db: Session, user_id: int, rule_id: int) -> CategorisationRule:
+    rule = db.get(CategorisationRule, rule_id)
+    if rule is None or rule.user_id != user_id:
+        raise NotFoundError("rule")
+    return rule
+
+
 def create_rule(
     db: Session,
     user_id: int,
@@ -160,12 +180,7 @@ def create_rule(
     category_id: int,
     priority: int = 100,
 ) -> CategorisationRule:
-    pattern = pattern.strip()
-    if not 1 <= len(pattern) <= 140:
-        raise ServiceError("The pattern must have 1 to 140 characters.")
-    if not 0 <= priority <= 10_000:
-        raise ServiceError("The priority must be between 0 and 10000.")
-    owned_category(db, user_id, category_id)
+    pattern = _checked_rule_values(db, user_id, pattern, priority, category_id)
     rule = CategorisationRule(
         user_id=user_id,
         field=field,
@@ -177,6 +192,31 @@ def create_rule(
     db.add(rule)
     db.flush()
     return rule
+
+
+def update_rule(
+    db: Session,
+    rule: CategorisationRule,
+    *,
+    field: RuleField,
+    match_type: MatchType,
+    pattern: str,
+    category_id: int,
+    priority: int,
+) -> None:
+    """Change all values of a rule.
+
+    The change applies to the next imports. Transactions that have a category
+    already keep it. "Apply the rules to uncategorised transactions" applies the
+    changed rule to the uncategorised transactions.
+    """
+    pattern = _checked_rule_values(db, rule.user_id, pattern, priority, category_id)
+    rule.field = field
+    rule.match_type = match_type
+    rule.pattern = pattern
+    rule.category_id = category_id
+    rule.priority = priority
+    db.flush()
 
 
 def apply_to_uncategorised(db: Session, user_id: int) -> int:

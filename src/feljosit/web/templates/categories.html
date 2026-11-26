@@ -58,7 +58,7 @@
           <td class="num">{{ r.priority }}</td>
           <td>{{ r.field.value | replace('_', ' ') }} {{ r.match_type.value }} "<strong>{{ r.pattern }}</strong>"</td>
           <td>{{ r.category.name }}</td>
-          <td><form method="post" action="/rules/{{ r.id }}/delete" class="inline">{{ csrf() }}<button type="submit" class="link">Delete</button></form></td>
+          <td class="nowrap"><a href="/rules/{{ r.id }}/edit">Edit</a> · <form method="post" action="/rules/{{ r.id }}/delete" class="inline" data-confirm="Delete this rule?">{{ csrf() }}<button type="submit" class="link">Delete</button></form></td>
         </tr>
       {% else %}
         <tr><td colspan="4">No rules yet.</td></tr>

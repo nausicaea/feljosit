@@ -18,7 +18,7 @@ from feljosit.models import (
 )
 from feljosit.services import categories, categorise
 from feljosit.services.errors import NotFoundError, ServiceError
-from feljosit.web.deps import CsrfAuth, CurrentAuth
+from feljosit.web.deps import Auth, CsrfAuth, CurrentAuth
 from feljosit.web.rendering import render
 
 router = APIRouter()
@@ -31,15 +31,19 @@ def _name(value: str) -> str:
     return value
 
 
-@router.get("/categories", response_class=HTMLResponse)
-def categories_page(request: Request, auth: CurrentAuth) -> Response:
-    groups = list(
+def _groups(auth: Auth) -> list[CategoryGroup]:
+    return list(
         auth.db.scalars(
             select(CategoryGroup)
             .where(CategoryGroup.user_id == auth.user.id)
             .order_by(CategoryGroup.sort_order, CategoryGroup.name)
         )
     )
+
+
+@router.get("/categories", response_class=HTMLResponse)
+def categories_page(request: Request, auth: CurrentAuth) -> Response:
+    groups = _groups(auth)
     rules = list(
         auth.db.scalars(
             select(CategorisationRule)
@@ -181,11 +185,51 @@ def create_rule(
     return RedirectResponse("/categories#rules", status_code=303)
 
 
+@router.get("/rules/{rule_id}/edit", response_class=HTMLResponse)
+def edit_rule_page(request: Request, auth: CurrentAuth, rule_id: int) -> Response:
+    rule = categorise.owned_rule(auth.db, auth.user.id, rule_id)
+    return render(
+        request,
+        "rule_edit.html",
+        auth,
+        rule=rule,
+        groups=_groups(auth),
+        fields=list(RuleField),
+        match_types=list(MatchType),
+    )
+
+
+@router.post("/rules/{rule_id:int}")
+def update_rule(
+    auth: CsrfAuth,
+    rule_id: int,
+    field: Annotated[RuleField, Form()],
+    match_type: Annotated[MatchType, Form()],
+    pattern: Annotated[str, Form(max_length=140)],
+    category_id: Annotated[int, Form()],
+    priority: Annotated[int, Form(ge=0, le=10_000)] = 100,
+) -> Response:
+    rule = categorise.owned_rule(auth.db, auth.user.id, rule_id)
+    try:
+        categorise.update_rule(
+            auth.db,
+            rule,
+            field=field,
+            match_type=match_type,
+            pattern=pattern,
+            category_id=category_id,
+            priority=priority,
+        )
+    except ServiceError as exc:
+        auth.flash(str(exc), error=True)
+        return RedirectResponse(f"/rules/{rule.id}/edit", status_code=303)
+    auth.flash("The rule is changed.")
+    return RedirectResponse("/categories#rules", status_code=303)
+
+
 @router.post("/rules/{rule_id}/delete")
 def delete_rule(auth: CsrfAuth, rule_id: int) -> Response:
-    rule = auth.db.get(CategorisationRule, rule_id)
-    if rule is None or rule.user_id != auth.user.id:
-        raise NotFoundError("rule")
+    rule = categorise.owned_rule(auth.db, auth.user.id, rule_id)
     auth.db.delete(rule)
     return RedirectResponse("/categories#rules", status_code=303)
 

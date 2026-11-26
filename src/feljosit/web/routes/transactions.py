@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BeforeValidator
 from sqlalchemy import func, or_, select
 
+from feljosit.iban import normalise_iban
 from feljosit.models import (
     Account,
     CategoryGroup,
@@ -62,8 +63,13 @@ def transactions_page(
     q: Annotated[str, Query(max_length=100)] = "",
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
     matched: Annotated[bool, Query()] = False,
+    iban: Annotated[bool, Query()] = False,
 ) -> Response:
-    """The transaction list. ``matched`` shows only the transfers found from matching."""
+    """The transaction list.
+
+    ``matched`` shows only the transfers found from matching. ``iban`` shows the
+    account number of the counterparty.
+    """
     filters = [Transaction.user_id == auth.user.id]
     if account is not None:
         filters.append(Transaction.account_id == account)
@@ -89,13 +95,19 @@ def transactions_page(
         )
     if q.strip():
         pattern = f"%{_escape_like(q.strip())}%"
-        filters.append(
-            or_(
-                Transaction.counterparty.ilike(pattern, escape="\\"),
-                Transaction.description.ilike(pattern, escape="\\"),
-                Transaction.memo.ilike(pattern, escape="\\"),
-            )
-        )
+        conditions = [
+            Transaction.counterparty.ilike(pattern, escape="\\"),
+            Transaction.description.ilike(pattern, escape="\\"),
+            Transaction.memo.ilike(pattern, escape="\\"),
+        ]
+        # The IBANs are stored without spaces: "CH93 0076" finds "CH9300762…". Only a
+        # text with a digit and 4 or more characters can be part of an IBAN. Else a
+        # search for "ch" finds all Swiss IBANs.
+        compact = normalise_iban(q)
+        if len(compact) >= 4 and any(c.isdigit() for c in compact):
+            iban_pattern = f"%{_escape_like(compact)}%"
+            conditions.append(Transaction.counterparty_iban.ilike(iban_pattern, escape="\\"))
+        filters.append(or_(*conditions))
     base = select(Transaction).join(Account, Transaction.account_id == Account.id).where(*filters)
     total = auth.db.scalar(select(func.count()).select_from(base.subquery())) or 0
     items = list(
@@ -123,6 +135,8 @@ def transactions_page(
         }.items()
         if v is not None
     }
+    # A display option, not a filter: "Remove the filters" keeps it.
+    display = {"iban": "true"} if iban else {}
     return render(
         request,
         "transactions.html",
@@ -132,8 +146,11 @@ def transactions_page(
         total=total,
         page=page,
         pages=max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1),
-        query_string=urlencode(params),
-        return_to="/transactions?" + urlencode({**params, "page": page}),
+        query_string=urlencode({**params, **display}),
+        filters_active=bool(params),
+        display_query=urlencode(display),
+        show_iban=iban,
+        return_to="/transactions?" + urlencode({**params, **display, "page": page}),
         accounts=accounts.list_accounts(auth.db, auth.user.id),
         groups=groups,
         filter_account=account,
@@ -146,7 +163,7 @@ def transactions_page(
 
 
 #: Query parameters that the transaction list accepts. A redirect keeps only these.
-_LIST_PARAMS = ("account", "category", "uncategorised", "q", "page", "matched")
+_LIST_PARAMS = ("account", "category", "uncategorised", "q", "page", "matched", "iban")
 
 
 def _back(return_to: str) -> RedirectResponse:
