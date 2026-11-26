@@ -1,6 +1,6 @@
 # ADR-0007: Use local accounts and server-side sessions
 
-- Status: Accepted
+- Status: Accepted (the first user: see ADR-0019)
 - Date: 2026-11-25
 
 ## Context

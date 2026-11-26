@@ -1,0 +1,48 @@
+[package]
+name = "feljosit"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Local-first personal budgeting for the Swiss financial sector, with ISO 20022 camt.053 import."
+readme = "README.md"
+publish = false
+
+
+[dependencies]
+argon2 = { version = "=0.6.0", default-features = false, features = ["alloc"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
+base64 = "=0.23.1"
+chrono = { version = "=0.4.45", default-features = false, features = ["clock", "std", "serde"] }
+csv = "=1.4.0"
+dirs = "=7.0.0"
+form_urlencoded = "=1.2.3"
+getrandom = "=0.4.3"
+hex = "=0.4.3"
+minijinja = { version = "=3.1.0", features = ["preserve_order", "serde"] }
+minijinja-contrib = { version = "=3.1.0", features = ["pycompat"] }
+open = "=5.4.5"
+roxmltree = "=0.21.2"
+rpassword = "=7.5.5"
+rusqlite = { version = "=0.43.0", features = ["bundled"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+sha2 = "=0.11.2"
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "signal"] }
+zip = { version = "=9.8.2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# Argon2 is very slow without optimisation. This keeps the tests fast.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+
+[dev-dependencies]
+tempfile = "=3.27.0"

@@ -1,0 +1,22 @@
+{# The heading, the report tabs and the period controls of a report page.
+   Needs: base (the path of the page), keep (query parameters to keep), the period context. #}
+<div class="page-head">
+  <h1>Reports</h1>
+  <nav class="tabs" aria-label="Period">
+    {% for p, label in periods.items() %}<a href="{{ base }}?{{ dict(period=p) | merge(keep) | urlencode }}" {% if p == period %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
+</div>
+<nav class="tabs report-tabs" aria-label="Report">
+  <a href="/reports?{{ period_query | urlencode }}" {% if base == '/reports' %}aria-current="page"{% endif %}>Overview</a>
+  <a href="/reports/categories?{{ period_query | urlencode }}" {% if base == '/reports/categories' %}aria-current="page"{% endif %}>Spending by category</a>
+  <a href="/reports/counterparties?{{ period_query | urlencode }}" {% if base == '/reports/counterparties' %}aria-current="page"{% endif %}>Spending by counterparty</a>
+</nav>
+<form method="get" action="{{ base }}" class="filters" aria-label="Custom period">
+  {% for k, v in keep.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <label>From <input type="date" name="from" value="{{ form_from }}" min="1900-01-01" max="9998-12-31" required></label>
+  <label>To <input type="date" name="to" value="{{ form_to }}" min="1900-01-01" max="9998-12-31" required></label>
+  <button type="submit">Show</button>
+  {% if custom %}<a href="{{ base }}{% if keep %}?{{ keep | urlencode }}{% endif %}">Remove the custom period</a>{% endif %}
+</form>
+{% if error %}<p class="flash error" role="alert">{{ error }} The page shows the period "{{ periods[period] }}".</p>{% endif %}
+<p class="hint">{{ start | swiss_date }} to {{ end | swiss_date }}. Only budget accounts. Transfers are not included.{% if shortened %} The page shows only the last {{ max_years }} years.{% endif %}</p>

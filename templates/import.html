@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, amount with context %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<h1>Import a bank statement or a credit card file</h1>
+{% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+{% if result %}
+<section class="card result">
+  <h2>Result</h2>
+  {% for s in result.statements %}
+  <h3>{{ s.account_name }}{% if s.statement_id %} · statement {{ s.statement_id }}{% endif %}</h3>
+  {% if s.account_created %}
+  <p class="flash ok">No account had the IBAN of this statement. The import added the account "{{ s.account_name }}". <a href="/accounts/{{ s.account_id }}/edit">Change the name and the type</a>.</p>
+  {% endif %}
+  <ul>
+    <li>{{ s.new_count }} new transactions</li>
+    <li>{{ s.duplicate_count }} transactions were imported before (ignored)</li>
+    <li>{{ s.categorised_count }} transactions got a category automatically</li>
+    <li>{{ s.transfer_count }} transfers between your accounts{% if s.matched_transfer_count %} ({{ s.matched_transfer_count }} found from a matching transaction on a different account, <a href="/transactions?matched=true">check them</a>){% endif %}</li>
+    {% if s.skipped_entries %}<li>{{ s.skipped_entries }} entries are not booked (pending) and were ignored</li>{% endif %}
+  </ul>
+  {% if s.balance_matches is true %}
+  <p class="flash ok">The closing balance of the statement ({{ s.closing_balance_minor | money }}) agrees with the account.</p>
+  {% elif s.balance_matches is false %}
+  <p class="flash warn">The closing balance of the statement is {{ s.closing_balance_minor | money }}, but the account balance on this date is {{ s.computed_balance_minor | money }}. Some transactions are possibly missing. Import the older statements too.</p>
+  {% endif %}
+  <p><a href="/transactions?account={{ s.account_id }}&amp;uncategorised=true">Categorise the new transactions</a></p>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <form method="post" action="/import" enctype="multipart/form-data" class="stack">
+    {{ csrf() }}
+    <label>File: camt.053 (XML or ZIP) or credit card CSV, maximum 10 MB
+      <input type="file" name="statement" accept=".xml,.zip,.csv,application/xml,text/xml,application/zip,text/csv" required>
+    </label>
+    <label>Account
+      <select name="account_id">
+        <option value="">Automatic (find the account from the IBAN, or add it; not for credit card files)</option>
+        {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}{% if a.iban %} · {{ a.iban | iban }}{% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Import</button>
+  </form>
+  <p class="hint">Download the statement from your e-banking as "camt.053" (ISO 20022). Swiss banks (for example PostFinance, UBS, Raiffeisen, ZKB and other cantonal banks) supply this format. The application imports only booked entries. If you import the same transaction again, the application ignores it.</p>
+  <p class="hint">For a credit card, download the transactions as CSV. The file must have the columns "TransactionId", "Date", "Amount", "Currency" and "StateType". The file has no IBAN, thus select the credit card account. A positive amount in the file is a charge to the card (an outflow).</p>
+</section>
+
+{% if history %}
+<section>
+  <h2>Last imports</h2>
+  <table>
+    <thead><tr><th scope="col">Date</th><th scope="col">File</th><th scope="col" class="num">New</th><th scope="col" class="num">Duplicates</th></tr></thead>
+    <tbody>
+    {% for h in history %}
+      <tr><td>{{ h.imported_at }} UTC</td><td>{{ h.filename }}</td><td class="num">{{ h.new_count }}</td><td class="num">{{ h.duplicate_count }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

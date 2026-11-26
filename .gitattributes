@@ -1,0 +1,4 @@
+# Keep LF line ends on all systems (Windows CI included).
+* text=auto eol=lf
+# The test fixtures are compared byte for byte.
+tests/fixtures/** -text

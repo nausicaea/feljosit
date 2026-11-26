@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, category_options with context %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<h1>Categories</h1>
+<div class="columns">
+<section>
+  <p class="hint">Drag a category at ⠿ to move it into a different group or to a different position. Or select the group in the list of the category.</p>
+  <p class="visually-hidden" role="status" aria-live="polite" data-move-status></p>
+  {% for g in groups %}
+  <div class="card">
+    <h2>{{ g.name }}</h2>
+    <ul class="plain category-list" data-group-id="{{ g.id }}">
+      {% for c in g.categories %}
+      <li class="{{ 'hidden-cat' if c.hidden }}" data-category-id="{{ c.id }}">
+        <span class="drag-handle" draggable="true" title="Drag to move" aria-hidden="true">⠿</span>
+        <form method="post" action="/categories/{{ c.id }}/rename" class="inline rename-form">
+          {{ csrf() }}<input name="name" value="{{ c.name }}" maxlength="100" aria-label="Name" data-autosubmit-change>
+        </form>
+        <span class="badge">{{ 'Income → Ready to Assign' if c.kind == 'income' else 'Expense' }}</span>
+        <form method="post" action="/categories/{{ c.id }}/move" class="inline move-form">
+          {{ csrf() }}
+          <select name="group_id" aria-label="Group of {{ c.name }}" data-autosubmit-change>
+            {% for other in groups %}<option value="{{ other.id }}" {% if other.id == g.id %}selected{% endif %}>{{ other.name }}</option>{% endfor %}
+          </select>
+          <noscript><button type="submit" class="link">Move</button></noscript>
+        </form>
+        <form method="post" action="/categories/{{ c.id }}/hide" class="inline">
+          {{ csrf() }}<input type="hidden" name="hidden" value="{{ 'false' if c.hidden else 'true' }}">
+          <button type="submit" class="link">{{ 'Show' if c.hidden else 'Hide' }}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/categories" class="inline-form">
+      {{ csrf() }}<input type="hidden" name="group_id" value="{{ g.id }}">
+      <input name="name" maxlength="100" placeholder="New category" required aria-label="New category name">
+      <select name="kind" aria-label="Kind">{% for k in kinds %}<option value="{{ k }}">{{ k | capitalize }}</option>{% endfor %}</select>
+      <button type="submit">Add</button>
+    </form>
+  </div>
+  {% endfor %}
+  <form method="post" action="/categories/groups" class="inline-form card">
+    {{ csrf() }}<input name="name" maxlength="100" placeholder="New group" required aria-label="New group name">
+    <button type="submit">Add a group</button>
+  </form>
+</section>
+
+<section id="rules">
+  <div class="card">
+    <h2>Categorisation rules</h2>
+    <p class="hint">The rules apply during the import. The rule with the lowest priority number applies first. If no rule applies, the application uses the category of the last transaction with the same counterparty.</p>
+    <table>
+      <thead><tr><th scope="col">Priority</th><th scope="col">If</th><th scope="col">Then category</th><th scope="col"></th></tr></thead>
+      <tbody>
+      {% for r in rules %}
+        <tr>
+          <td class="num">{{ r.priority }}</td>
+          <td>{{ r.field | replace('_', ' ') }} {{ r.match_type }} "<strong>{{ r.pattern }}</strong>"</td>
+          <td>{{ r.category_name }}</td>
+          <td class="nowrap"><a href="/rules/{{ r.id }}/edit">Edit</a> · <form method="post" action="/rules/{{ r.id }}/delete" class="inline" data-confirm="Delete this rule?">{{ csrf() }}<button type="submit" class="link">Delete</button></form></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">No rules yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <form method="post" action="/rules" class="grid-form">
+      {{ csrf() }}
+      <label>Field
+        <select name="field">{% for f in fields %}<option value="{{ f }}">{{ f | replace('_', ' ') | capitalize }}</option>{% endfor %}</select>
+      </label>
+      <label>Match
+        <select name="match_type">{% for m in match_types %}<option value="{{ m }}">{{ m | capitalize }}</option>{% endfor %}</select>
+      </label>
+      <label>Text <input name="pattern" maxlength="140" required placeholder="Migros"></label>
+      <label>Category <select name="category_id" required>{{ category_options(groups) }}</select></label>
+      <label>Priority <input name="priority" type="number" min="0" max="10000" value="100"></label>
+      <button type="submit">Add the rule</button>
+    </form>
+    <form method="post" action="/rules/apply">
+      {{ csrf() }}<button type="submit" class="secondary">Apply the rules to uncategorised transactions</button>
+    </form>
+  </div>
+</section>
+</div>
+{% endblock %}

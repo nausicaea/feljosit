@@ -1,6 +1,6 @@
 # ADR-0010: Make the charts on the server as SVG
 
-- Status: Accepted
+- Status: Accepted (the language is changed by ADR-0018)
 - Date: 2026-11-25
 
 ## Context

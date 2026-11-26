@@ -26,35 +26,57 @@ Your data stays on your computer. The application sends no data to a cloud servi
 
 ## Requirements
 
-- Python 3.13 or later.
-- [uv](https://docs.astral.sh/uv/).
+- Windows 10 or later, macOS 11 or later, or Linux (x86-64 or ARM64).
+- A web browser.
 - Full-disk encryption on your computer (recommended, see [SECURITY.md](SECURITY.md)).
 
-## Procedure: install and start
+You do not have to install other software. Feljosit is one executable file. It
+contains the web server, the database engine (SQLite) and all pages.
 
-1. Clone the repository.
-2. Install the dependencies:
+## Procedure: start Feljosit
 
-   ```bash
-   uv sync --no-dev
-   ```
+1. Download the file for your computer from the
+   [releases](https://github.com/nausicaea/feljosit/releases):
 
-3. Add a user. The command asks for a password (minimum 12 characters):
+   | Computer | File |
+   | --- | --- |
+   | Windows | `feljosit-VERSION-windows-x86_64.exe` |
+   | Mac with Apple silicon (M1 and later) | `feljosit-VERSION-macos-aarch64` |
+   | Mac with an Intel processor | `feljosit-VERSION-macos-x86_64` |
+   | Linux (most computers) | `feljosit-VERSION-linux-x86_64` |
+   | Linux on ARM (for example Raspberry Pi) | `feljosit-VERSION-linux-aarch64` |
 
-   ```bash
-   uv run feljosit create-user anna
-   ```
-
-4. Start the server:
-
-   ```bash
-   uv run feljosit serve
-   ```
-
-5. Open <http://127.0.0.1:8765> in your browser.
-6. Log in.
+2. Copy the file to a folder, for example your "Programs" or "Applications" folder.
+3. Start the file:
+   - Windows: double-click the file.
+   - macOS and Linux: open a terminal in the folder and type the name of the file,
+     for example `./feljosit-VERSION-macos-aarch64`.
+4. The browser opens <http://127.0.0.1:8765>. At the first start, add your user.
+5. To stop Feljosit, close its window or press Ctrl+C in the terminal.
 
 For the next steps, read the [user guide](docs/user-guide.md).
+
+The files are not signed. At the first start, the operating system shows a warning:
+
+- Windows (SmartScreen): click "More info", then "Run anyway".
+- macOS (Gatekeeper): in Finder, right-click the file, click "Open", then click
+  "Open" again. Or type `xattr -d com.apple.quarantine FILE` in a terminal.
+- Linux: make the file executable with `chmod +x FILE`.
+
+Compare the checksum of the file with the file `SHA256SUMS` of the release.
+
+## Commands
+
+You can also use Feljosit in a terminal:
+
+| Command | Description |
+| --- | --- |
+| `feljosit` | Start the server and open the browser. |
+| `feljosit serve` | Start the server. Add `--open` to open the browser, `--port 9000` for a different port. |
+| `feljosit create-user NAME` | Add a user. The command asks for a password (minimum 12 characters). |
+| `feljosit set-password NAME` | Set a new password. This also unlocks a locked user. |
+| `feljosit migrate` | Upgrade the database schema. The server also does this when it starts. |
+| `feljosit --help` | Show all commands. |
 
 ## Configuration
 
@@ -62,15 +84,35 @@ Set these environment variables if necessary:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `FELJOSIT_DATA_DIR` | `~/.local/share/feljosit` | Directory for the database. |
+| `FELJOSIT_DATA_DIR` | See below | Directory for the database. |
 | `FELJOSIT_HOST` | `127.0.0.1` | Address of the server. Do not change it without a TLS reverse proxy. |
 | `FELJOSIT_PORT` | `8765` | Port of the server. |
 | `FELJOSIT_ALLOWED_HOSTS` | `127.0.0.1,localhost,::1` | Permitted values of the `Host` header. |
 | `FELJOSIT_SECURE_COOKIES` | `false` | Set to `true` behind a TLS reverse proxy. |
 
+The default data directory:
+
+| System | Directory |
+| --- | --- |
+| Windows | `%APPDATA%\feljosit` |
+| macOS | `~/Library/Application Support/feljosit` |
+| Linux | `~/.local/share/feljosit` (or `$XDG_DATA_HOME/feljosit`) |
+
+## Update from version 0.3.0 (Python)
+
+Version 0.3.0 was a Python application. The new version uses the same database
+file, the same passwords and the same import rules (see
+[ADR-0018](docs/adr/0018-one-executable-in-rust.md)).
+
+1. Stop the old server.
+2. Make a backup of the database file.
+3. Start the new file. It finds the database of version 0.3.0 in
+   `~/.local/share/feljosit`, also on Windows and macOS. If you used
+   `FELJOSIT_DATA_DIR`, set it again.
+
 ## Backup
 
-The database is one file: `$FELJOSIT_DATA_DIR/feljosit.sqlite3`.
+The database is one file: `feljosit.sqlite3` in the data directory.
 
 1. Stop the server.
 2. Copy the file to an encrypted backup medium.
@@ -81,7 +123,7 @@ The database is one file: `$FELJOSIT_DATA_DIR/feljosit.sqlite3`.
 - [Architecture decision records](docs/adr/README.md)
 - [Threat model](docs/threat-model.md)
 - [Security policy](SECURITY.md)
-- [Contributing](CONTRIBUTING.md)
+- [Contributing](CONTRIBUTING.md) (with the procedure to build Feljosit from the source code)
 - [Writing rules (ASD-STE100)](docs/writing-style.md)
 
 ## Licence

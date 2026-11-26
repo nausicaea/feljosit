@@ -1,6 +1,6 @@
 # ADR-0014: Limit the resources that one camt.053 import can use
 
-- Status: Accepted
+- Status: Accepted (the parser and the import lock are superseded by ADR-0018)
 - Date: 2026-11-25
 - Supersedes: the ZIP limits of ADR-0005
 

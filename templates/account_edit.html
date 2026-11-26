@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf with context %}
+{% block title %}Edit {{ account.name }}{% endblock %}
+{% block content %}
+<h1>Edit the account</h1>
+<section class="card">
+  <dl class="facts">
+    <div><dt>IBAN</dt><dd class="mono">{{ account.iban | iban if account.iban else '—' }}</dd></div>
+    <div><dt>Currency</dt><dd>{{ account.currency }}</dd></div>
+  </dl>
+  <form method="post" action="/accounts/{{ account.id }}" class="grid-form">
+    {{ csrf() }}
+    <label>Name <input name="name" value="{{ account.name }}" required maxlength="100"></label>
+    <label>Type
+      <select name="account_type">
+        {% for t in account_types %}<option value="{{ t.value }}" {% if t.value == account.type %}selected{% endif %}>{{ t.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Budget or tracking
+      <select name="budget_mode">
+        <option value="budget" {% if account.on_budget %}selected{% endif %}>Budget account</option>
+        <option value="tracking" {% if not account.on_budget %}selected{% endif %}>Tracking account</option>
+        <option value="default">Automatic (from the type)</option>
+      </select>
+    </label>
+    <button type="submit">Save</button>
+  </form>
+  <p class="hint">If you change a budget account to a tracking account, its transactions lose their categories. If you change a tracking account to a budget account, its starting balance goes to "Ready to Assign" and you must categorise its transactions. In both cases, the application finds the transfers between this account and your other accounts again.</p>
+  <p><a href="/accounts">Back to the accounts</a></p>
+</section>
+{% endblock %}

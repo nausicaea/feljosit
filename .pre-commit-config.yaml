@@ -1,4 +1,4 @@
-# Install: uv run --with pre-commit pre-commit install --hook-type pre-commit --hook-type commit-msg
+# Install: pipx run pre-commit install --hook-type pre-commit --hook-type commit-msg
 default_install_hook_types:
 - pre-commit
 - commit-msg
@@ -13,19 +13,14 @@ repos:
     rev: v4.20.1
   - repo: local
     hooks:
-      - id: ruff-format
-        name: ruff format
-        entry: uv run ruff format
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
         language: system
-        types: [python]
-      - id: ruff-check
-        name: ruff check
-        entry: uv run ruff check --fix
-        language: system
-        types: [python]
-      - id: mypy
-        name: mypy
-        entry: uv run mypy src tests
+        types: [rust]
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --locked -- -D warnings
         language: system
         pass_filenames: false
-        types: [python]
+        types: [rust]

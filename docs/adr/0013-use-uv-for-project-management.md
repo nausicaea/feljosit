@@ -1,6 +1,6 @@
 # ADR-0013: Use uv for project and dependency management
 
-- Status: Accepted
+- Status: Superseded by ADR-0018
 - Date: 2026-11-25
 - Related: ADR-0011, ADR-0012
 

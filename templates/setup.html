@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}First start{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Welcome to Feljosit</h1>
+  <p>The database has no user. Add the first user. You can add more users later with <code>feljosit create-user NAME</code> in a terminal.</p>
+  {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/setup" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
+    <label>Username (a-z, 0-9, ".", "_" or "-") <input name="username" autocomplete="username" required minlength="2" maxlength="64" autofocus></label>
+    <label>Password (minimum 12 characters) <input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label>
+    <label>Password again <input name="password_repeat" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label>
+    <button type="submit">Add the user</button>
+  </form>
+  <p class="hint">Your data stays on this computer. Use full-disk encryption on this computer.</p>
+</section>
+{% endblock %}
