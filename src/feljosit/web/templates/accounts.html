@@ -16,7 +16,8 @@
       <td class="mono">{{ a.iban | iban if a.iban else '—' }}</td>
       <td>{{ 'Budget' if a.on_budget else 'Tracking' }}</td>
       <td class="num">{{ a.currency }} {{ amount(bal, a.currency) }}</td>
-      <td>
+      <td class="nowrap">
+        <a href="/accounts/{{ a.id }}/edit">Edit</a> ·
         <form method="post" action="/accounts/{{ a.id }}/close" class="inline">
           {{ csrf() }}<input type="hidden" name="closed" value="{{ 'false' if a.closed else 'true' }}">
           <button type="submit" class="link">{{ 'Open again' if a.closed else 'Close' }}</button>
@@ -53,6 +54,6 @@
     <label>Date of the starting balance <input name="starting_date" type="date" value="{{ today }}"></label>
     <button type="submit">Add the account</button>
   </form>
-  <p class="hint">Budget accounts (private, savings, credit card, cash) are part of the budget. Tracking accounts (pillar 3a, investments, loans) only show the balance. If you import a camt.053 statement, the IBAN connects the statement to the account.</p>
+  <p class="hint">Budget accounts (private, savings, credit card, cash) are part of the budget. Tracking accounts (pillar 3a, investments, loans) only show the balance. If you import a camt.053 statement, the IBAN connects the statement to the account. If no account has the IBAN, the import adds the account.</p>
 </section>
 {% endblock %}

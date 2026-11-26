@@ -87,6 +87,8 @@ def create_account(
     )
     db.add(account)
     db.flush()
+    # Movements to this IBAN that are imported already can be transfers now.
+    update_incoming_transfers(db, account)
     if starting_balance_minor:
         add_starting_balance(db, account, starting_balance_minor, starting_date or date.today())
     return account
@@ -159,3 +161,96 @@ def add_manual_transaction(
 
 def set_closed(db: Session, account: Account, *, closed: bool) -> None:
     account.closed = closed
+
+
+def update_account(
+    db: Session,
+    account: Account,
+    *,
+    name: str,
+    account_type: AccountType,
+    budget_currency: str,
+    on_budget: bool | None = None,
+) -> None:
+    """Change the name, the type and the budget setting of an account.
+
+    If ``on_budget`` is ``None``, the type gives the budget setting. If the budget
+    setting changes, :func:`_reclassify` updates the transactions.
+    """
+    name = name.strip()
+    if not 1 <= len(name) <= 100:
+        raise ServiceError("The account name must have 1 to 100 characters.")
+    on_budget = account_type.on_budget_default if on_budget is None else on_budget
+    if on_budget and account.currency != budget_currency:
+        raise ServiceError(
+            f"An account in the budget must use the budget currency ({budget_currency}). "
+            "Make it a tracking account."
+        )
+    account.name = name
+    account.type = account_type
+    if on_budget != account.on_budget:
+        account.on_budget = on_budget
+        db.flush()
+        _reclassify(db, account)
+
+
+def _reclassify(db: Session, account: Account) -> None:
+    """Update the transactions after the budget setting of ``account`` changed.
+
+    - A tracking account has no categories. A budget account gives its starting
+      balance to "Ready to Assign". Its other transactions stay uncategorised.
+    - A transfer is a movement between two own accounts with the same budget
+      setting (see ADR-0008). The transfer flag changes for the movements between
+      this account and the other accounts. A new transfer has no category.
+    """
+    income = income_category_for_starting_balance(db, account.user_id)
+    for tx in db.scalars(select(Transaction).where(Transaction.account_id == account.id)):
+        if not account.on_budget:
+            tx.category_id = None
+        elif tx.source == TransactionSource.STARTING_BALANCE and tx.category_id is None:
+            tx.category_id = income.id if income else None
+
+    own = {
+        iban: (account_id, on_budget)
+        for account_id, iban, on_budget in db.execute(
+            select(Account.id, Account.iban, Account.on_budget).where(
+                Account.user_id == account.user_id, Account.iban.is_not(None)
+            )
+        )
+    }
+    # Movements of this account to other own accounts.
+    outgoing = db.scalars(
+        select(Transaction).where(
+            Transaction.account_id == account.id,
+            Transaction.counterparty_iban.in_([i for i in own if i != account.iban]),
+        )
+    )
+    for tx in outgoing:
+        _, other_on_budget = own[tx.counterparty_iban or ""]
+        _set_transfer(tx, other_on_budget == account.on_budget)
+    # Movements of the other own accounts to this account.
+    update_incoming_transfers(db, account)
+
+
+def update_incoming_transfers(db: Session, account: Account) -> None:
+    """Set the transfer flag of the movements from the other own accounts to ``account``.
+
+    A movement is a transfer if the two accounts have the same budget setting.
+    """
+    if not account.iban:
+        return
+    incoming = db.scalars(
+        select(Transaction).where(
+            Transaction.user_id == account.user_id,
+            Transaction.account_id != account.id,
+            Transaction.counterparty_iban == account.iban,
+        )
+    )
+    for tx in incoming:
+        _set_transfer(tx, tx.account.on_budget == account.on_budget)
+
+
+def _set_transfer(tx: Transaction, is_transfer: bool) -> None:
+    if is_transfer:
+        tx.category_id = None
+    tx.is_transfer = is_transfer

@@ -78,3 +78,41 @@ def close_account(
     accounts.set_closed(auth.db, account, closed=closed)
     auth.flash(f"The account '{account.name}' is {'closed' if closed else 'open'}.")
     return RedirectResponse("/accounts", status_code=303)
+
+
+@router.get("/accounts/{account_id}/edit", response_class=HTMLResponse)
+def edit_account_page(request: Request, auth: CurrentAuth, account_id: int) -> Response:
+    account = accounts.get_account(auth.db, auth.user.id, account_id)
+    return render(
+        request,
+        "account_edit.html",
+        auth,
+        account=account,
+        account_types=list(AccountType),
+    )
+
+
+@router.post("/accounts/{account_id}")
+def update_account(
+    auth: CsrfAuth,
+    settings: AppSettings,
+    account_id: int,
+    name: Annotated[str, Form(max_length=100)],
+    account_type: Annotated[AccountType, Form()],
+    budget_mode: Annotated[str, Form(max_length=10)] = "default",
+) -> Response:
+    account = accounts.get_account(auth.db, auth.user.id, account_id)
+    try:
+        accounts.update_account(
+            auth.db,
+            account,
+            name=name,
+            account_type=account_type,
+            budget_currency=settings.budget_currency,
+            on_budget={"budget": True, "tracking": False}.get(budget_mode),
+        )
+    except ServiceError as exc:
+        auth.flash(str(exc), error=True)
+        return RedirectResponse(f"/accounts/{account_id}/edit", status_code=303)
+    auth.flash(f"The account '{account.name}' is changed.")
+    return RedirectResponse("/accounts", status_code=303)
