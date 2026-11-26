@@ -1,6 +1,6 @@
 [package]
 name = "feljosit"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Local-first personal budgeting for the Swiss financial sector, with ISO 20022 camt.053 import."

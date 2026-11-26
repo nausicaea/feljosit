@@ -2,6 +2,16 @@
 
 All important changes are in this file. Commitizen updates it with `cz bump`.
 
+## v0.4.1 (2026-11-26)
+
+### Fix
+
+- **deps**: replace the unmaintained chrono with jiff (#28)
+
+### Refactor
+
+- **deps**: replace 11 external libraries with the standard library (#30)
+
 ## v0.4.0 (2026-11-26)
 
 ### BREAKING CHANGE
