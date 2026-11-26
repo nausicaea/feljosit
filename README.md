@@ -12,6 +12,7 @@ Your data stays on your computer. The application sends no data to a cloud servi
   Payment Standards specify. The import ignores duplicates and compares the
   closing balance.
 - Import of credit card transactions from a CSV export (see ADR-0017).
+- A transaction list that you can filter and sort by date or amount.
 - Automatic categorisation with rules and with the history of your transactions.
   Detection of transfers between your accounts.
 - More than one account, with these types: private account, savings account,
