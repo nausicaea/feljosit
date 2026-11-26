@@ -175,6 +175,18 @@ def test_full_flow_import_categorise_budget_reports(client: Client, app: FastAPI
     # 1000.00 starting balance + 6500.00 salary - 1000.00 assigned.
     assert "CHF 6&#39;500.00" in page or "CHF 6'500.00" in page
     assert http.get("/reports?period=24m").status_code == 200
+    response = http.get("/reports?from=2026-10-01&to=2026-10-31")
+    assert response.status_code == 200
+    assert "01.10.2026 to 31.10.2026" in response.text
+    assert "Remove the custom period" in response.text
+    response = http.get("/reports?from=2026-11-01&to=2026-10-01")
+    assert response.status_code == 400
+    assert "on or before the end date" in response.text
+    assert http.get("/reports?from=&to=").status_code == 200
+    response = http.get("/reports?period=all")
+    assert response.status_code == 200
+    assert 'href="/reports?period=all" aria-current="page"' in response.text
+    assert http.get("/reports?from=abc").status_code == 422
     assert "Muster AG" in http.get("/transactions?q=muster").text
 
 

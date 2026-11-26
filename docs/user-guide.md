@@ -95,7 +95,13 @@ a different category, or the next month has less money to assign.
 
 ## Reports
 
-Click "Reports". Select the period. The page shows:
+Click "Reports". Select the period:
+
+- Click a preset period (3, 6, 12 or 24 months). A preset period includes the current month.
+- Or, click "All". The period starts in the month of your first transaction and includes the current month. If your transactions are more than 20 years old, the page shows only the last 20 years.
+- Or, type the dates in "From" and "To" and click "Show". The two dates are included. The maximum period is 20 years.
+
+The page shows:
 
 - Income, expenses, net amount and savings rate.
 - Income and expenses for each month.
@@ -103,6 +109,10 @@ Click "Reports". Select the period. The page shows:
 - Net worth (all accounts, one chart for each currency).
 
 The reports use only budget accounts, except the net worth. Transfers are not included.
+
+The charts show one value for each month. If the period starts or stops in a month, that month includes only the transactions in the period. The net worth of the last month is the net worth on the "To" date.
+
+You can save or share the address of a custom period, for example `/reports?from=2026-01-01&to=2026-06-30`.
 
 ## Procedure: change your password
 

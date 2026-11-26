@@ -48,6 +48,23 @@ def months_between(start: date, end: date) -> list[date]:
     return months
 
 
+def transaction_date_range(db: Session, user_id: int) -> tuple[date, date] | None:
+    """The booking dates of the first and the last transaction of all accounts.
+
+    Return ``None`` if the user has no transactions.
+    """
+    row = db.execute(
+        select(func.min(Transaction.booking_date), func.max(Transaction.booking_date)).where(
+            Transaction.user_id == user_id
+        )
+    ).one()
+    first: date | None = row[0]
+    last: date | None = row[1]
+    if first is None or last is None:
+        return None
+    return first, last
+
+
 def _budget_tx_filter(user_id: int, start: date, end: date) -> list[object]:
     return [
         Transaction.user_id == user_id,
