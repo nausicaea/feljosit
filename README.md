@@ -11,6 +11,7 @@ Your data stays on your computer. The application sends no data to a cloud servi
 - Import of camt.053 statements (versions 02 to 13, XML or ZIP), as the Swiss
   Payment Standards specify. The import ignores duplicates and compares the
   closing balance.
+- Import of credit card transactions from a CSV export (see ADR-0017).
 - Automatic categorisation with rules and with the history of your transactions.
   Detection of transfers between your accounts.
 - More than one account, with these types: private account, savings account,

@@ -1,4 +1,4 @@
-"""Import of camt.053 bank statements."""
+"""Import of camt.053 bank statements and credit card CSV files."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from feljosit.camt053 import Camt053Error
+from feljosit.cardcsv import CardCsvError
 from feljosit.models import ImportBatch
 from feljosit.services import accounts
 from feljosit.services.errors import ServiceError
@@ -80,7 +81,7 @@ def import_upload(
         )
         # Commit before the lock is released. Then the next import sees this import.
         auth.db.commit()
-    except (ServiceError, Camt053Error) as exc:
+    except (ServiceError, Camt053Error, CardCsvError) as exc:
         auth.db.rollback()
         return _page(request, auth, error=str(exc))
     finally:

@@ -35,6 +35,7 @@ boundaries, the threats and the controls.
 | Information disclosure | The operator reads the data of all users | Not prevented (ADR-0015). Users who do not trust each other use separate instances. |
 | Information disclosure | Error messages show data | Validation errors do not show the input. No debug mode. |
 | Denial of service | "Billion laughs" or ZIP bomb | Entities refused, ZIP limits (10 MB for each file, 25 MB in total), upload limit of 10 MB (ADR-0014). |
+| Denial of service | A credit card CSV file with very many lines or very long fields | Limits of 100,000 lines and 1,000 characters for each field, upload limit of 10 MB (ADR-0017). |
 | Denial of service | A very large or deep XML tree | Limits for the number of elements, the nesting depth and the attributes (ADR-0014). |
 | Denial of service | An amount such as `1E999999` uses the CPU | Strict amount syntax before `Decimal()` reads the value (ADR-0014). |
 | Denial of service | A long import stops all requests | The import runs in a worker thread. Only one import runs at a time (ADR-0014). |

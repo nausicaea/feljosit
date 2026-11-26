@@ -1,4 +1,4 @@
-"""Import of camt.053 statements."""
+"""Import of camt.053 statements and credit card CSV files."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from feljosit import camt053
+from feljosit import camt053, cardcsv
 from feljosit.iban import format_iban
 from feljosit.models import Account, AccountType, ImportBatch, Transaction, TransactionSource
 from feljosit.services import transfers
@@ -104,12 +104,20 @@ def _create_account_for(
     )
 
 
+def _parse(data: bytes) -> tuple[list[camt053.Statement], TransactionSource]:
+    """Find the format of the file from its content and parse it."""
+    if cardcsv.looks_like_card_csv(data):
+        return [cardcsv.parse_file(data)], TransactionSource.CARD_CSV
+    return camt053.parse_file(data), TransactionSource.CAMT053
+
+
 def _resolve_account(
     db: Session,
     user_id: int,
     statement: camt053.Statement,
     account_id: int | None,
     budget_currency: str | None,
+    source: TransactionSource = TransactionSource.CAMT053,
 ) -> tuple[Account, bool]:
     """Find the account of the statement. Return the account and ``True`` if it is new.
 
@@ -123,6 +131,8 @@ def _resolve_account(
                 Account.user_id == user_id, Account.iban == statement.account_iban
             )
         )
+    if account_id is None and source is TransactionSource.CARD_CSV:
+        raise ServiceError("A credit card file has no IBAN. Select the credit card account.")
     if account_id is None:
         if by_iban is not None:
             return by_iban, False
@@ -163,13 +173,15 @@ def import_statement_file(
     account_id: int | None = None,
     budget_currency: str | None = None,
 ) -> ImportResult:
-    """Parse and import a camt.053 file (XML or ZIP).
+    """Parse and import a camt.053 file (XML or ZIP) or a credit card CSV file.
 
     If ``account_id`` is ``None``, the IBAN of each statement gives the account. If
     ``budget_currency`` is given and no account has the IBAN, the import makes a new
     account. The import is idempotent. The same file cannot be imported two times, and a
     transaction that exists already (same fingerprint) is not added again.
-    Raise :class:`ServiceError` or :class:`~feljosit.camt053.Camt053Error` on errors.
+    A credit card CSV file has no IBAN, thus it needs ``account_id``.
+    Raise :class:`ServiceError`, :class:`~feljosit.camt053.Camt053Error` or
+    :class:`~feljosit.cardcsv.CardCsvError` on errors.
     """
     digest = hashlib.sha256(data).hexdigest()
     exists = db.scalar(
@@ -178,7 +190,7 @@ def import_statement_file(
     if exists is not None:
         raise ServiceError("This file was imported before.")
 
-    statements = camt053.parse_file(data)
+    statements, source = _parse(data)
     batch = ImportBatch(
         user_id=user_id,
         filename=filename[:MAX_FILENAME],
@@ -192,7 +204,9 @@ def import_statement_file(
     # file makes is a transfer too.
     targets = []
     for statement in statements:
-        account, created = _resolve_account(db, user_id, statement, account_id, budget_currency)
+        account, created = _resolve_account(
+            db, user_id, statement, account_id, budget_currency, source
+        )
         _check_account(account, statement)
         targets.append((statement, account, created))
     categoriser = Categoriser(db, user_id)
@@ -201,7 +215,7 @@ def import_statement_file(
     # the rules and the history.
     pending: list[tuple[Transaction, StatementResult]] = []
     for statement, account, created in targets:
-        item = _import_statement(db, categoriser, batch, account, statement, pending)
+        item = _import_statement(db, categoriser, batch, account, statement, pending, source)
         item.account_created = created
         result.statements.append(item)
     _match_transfers(db, user_id, pending)
@@ -235,6 +249,7 @@ def _import_statement(
     account: Account,
     statement: camt053.Statement,
     pending: list[tuple[Transaction, StatementResult]],
+    source: TransactionSource = TransactionSource.CAMT053,
 ) -> StatementResult:
     """Add the new transactions of one statement.
 
@@ -274,7 +289,7 @@ def _import_statement(
             description=item.description,
             reference=item.reference[:35] if item.reference else None,
             bank_reference=item.bank_reference,
-            source=TransactionSource.CAMT053,
+            source=source,
             fingerprint=item.fingerprint,
             import_batch_id=batch.id,
         )

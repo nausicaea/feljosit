@@ -2,7 +2,7 @@
 {% from "macros.html" import csrf, amount with context %}
 {% block title %}Import{% endblock %}
 {% block content %}
-<h1>Import a bank statement</h1>
+<h1>Import a bank statement or a credit card file</h1>
 {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
 {% if result %}
 <section class="card result">
@@ -32,18 +32,19 @@
 <section class="card">
   <form method="post" action="/import" enctype="multipart/form-data" class="stack">
     {{ csrf() }}
-    <label>camt.053 file (XML or ZIP, maximum 10 MB)
-      <input type="file" name="statement" accept=".xml,.zip,application/xml,text/xml,application/zip" required>
+    <label>File: camt.053 (XML or ZIP) or credit card CSV, maximum 10 MB
+      <input type="file" name="statement" accept=".xml,.zip,.csv,application/xml,text/xml,application/zip,text/csv" required>
     </label>
     <label>Account
       <select name="account_id">
-        <option value="">Automatic (find the account from the IBAN, or add it)</option>
+        <option value="">Automatic (find the account from the IBAN, or add it; not for credit card files)</option>
         {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}{% if a.iban %} · {{ a.iban | iban }}{% endif %}</option>{% endfor %}
       </select>
     </label>
     <button type="submit">Import</button>
   </form>
   <p class="hint">Download the statement from your e-banking as "camt.053" (ISO 20022). Swiss banks (for example PostFinance, UBS, Raiffeisen, ZKB and other cantonal banks) supply this format. The application imports only booked entries. If you import the same transaction again, the application ignores it.</p>
+  <p class="hint">For a credit card, download the transactions as CSV. The file must have the columns "TransactionId", "Date", "Amount", "Currency" and "StateType". The file has no IBAN, thus select the credit card account. A positive amount in the file is a charge to the card (an outflow).</p>
 </section>
 
 {% if history %}

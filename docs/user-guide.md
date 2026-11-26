@@ -95,6 +95,36 @@ The import does these steps:
 CAUTION: If the closing balance does not agree, transactions are possibly missing.
 Import the older statements too.
 
+## Procedure: import the transactions of a credit card
+
+1. In the app or the web portal of the credit card company, export the
+   transactions as a CSV file.
+2. Add an account with the type "Credit card", if you do not have one (see
+   "Procedure: add your accounts").
+3. Click "Import".
+4. Select the CSV file.
+5. In "Account", select the credit card account. The file has no IBAN, thus
+   "Automatic" is not possible.
+6. Click "Import".
+
+The application finds the format from the content of the file. The file must have
+the columns "TransactionId", "Date", "Amount", "Currency" and "StateType".
+
+- A positive amount in the file is a charge to the card. It becomes an outflow.
+- A negative amount is a payment to the card or a refund. It becomes an inflow.
+- The application imports only lines with the state "BOOKED". It ignores pending
+  lines. Import them again after they are booked.
+- The application ignores transactions that you imported before. Thus you can
+  export overlapping periods.
+- The merchant name is the counterparty. If a line has no merchant name (for
+  example the annual fee), the details are the counterparty. For a foreign
+  currency, the description shows the original amount and the exchange rate.
+- The payment of the card bill from your bank account becomes a transfer, if the
+  two transactions agree (see the transfers in "Procedure: import a statement").
+
+The file has no balance. Thus the application cannot compare the balance. Compare
+the balance of the account with the balance in the app of the credit card company.
+
 CAUTION: Two unrelated transactions with the same amount can become a wrong
 transfer. Check the matched transfers: in the import result, click "check them",
 or select the category "Transfers found from the amount" on the transactions page.
