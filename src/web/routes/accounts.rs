@@ -57,7 +57,7 @@ pub fn accounts_page(ctx: &mut Ctx<'_>) -> Result<Response> {
         context! {
             accounts => views,
             account_types => account_types(),
-            today => chrono::Local::now().date_naive().format("%Y-%m-%d").to_string(),
+            today => crate::dates::format(crate::dates::today(), "%Y-%m-%d"),
         },
     )
 }

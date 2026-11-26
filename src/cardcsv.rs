@@ -21,10 +21,10 @@
 //! lines and the length of the fields. Error messages do not include values from the
 //! file.
 
+use crate::dates::Date;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
-use chrono::NaiveDate;
 use sha2::{Digest, Sha256};
 
 use crate::camt053::{Statement, StatementTransaction};
@@ -122,14 +122,14 @@ pub fn looks_like_card_csv(data: &[u8]) -> bool {
 }
 
 /// Parse `2025-10-23 00:00:00`, `2025-10-23` or `23.10.2025`. Empty: `None`.
-fn date(text: &str, line: u64) -> Result<Option<NaiveDate>> {
+fn date(text: &str, line: u64) -> Result<Option<Date>> {
     let text = text.trim();
     if text.is_empty() {
         return Ok(None);
     }
     let value: String = text.chars().take(10).collect();
     for pattern in ["%Y-%m-%d", "%d.%m.%Y"] {
-        if let Ok(parsed) = NaiveDate::parse_from_str(&value, pattern) {
+        if let Some(parsed) = crate::dates::parse(&value, pattern) {
             return Ok(Some(parsed));
         }
     }

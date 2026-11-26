@@ -22,9 +22,9 @@
 //! from the IBAN. Thus the user can see the partner of a transfer, and "not a
 //! transfer" changes the two transactions together.
 
+use crate::dates::{self, Date};
 use std::collections::{HashMap, HashSet};
 
-use chrono::{Duration, NaiveDate};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::Result;
@@ -38,12 +38,12 @@ pub const MAX_DAYS: i64 = 4;
 struct Candidate {
     id: i64,
     account_id: i64,
-    booking_date: NaiveDate,
+    booking_date: Date,
     on_budget: bool,
 }
 
-fn days_between(a: NaiveDate, b: NaiveDate) -> i64 {
-    (a - b).num_days().abs()
+fn days_between(a: Date, b: Date) -> i64 {
+    dates::days_between(a, b)
 }
 
 /// The only nearest possible partner of `candidate`, or `None`.
@@ -71,8 +71,8 @@ fn best<'a>(candidate: &Candidate, others: &[&'a Candidate]) -> Option<&'a Candi
 pub fn match_transfers(
     conn: &Connection,
     user_id: i64,
-    start: Option<NaiveDate>,
-    end: Option<NaiveDate>,
+    start: Option<Date>,
+    end: Option<Date>,
 ) -> Result<Vec<(i64, i64)>> {
     let mut sql = String::from(
         "SELECT t.id, t.account_id, t.booking_date, t.amount_minor, t.currency, a.on_budget \
@@ -83,11 +83,11 @@ pub fn match_transfers(
     let mut values: Vec<rusqlite::types::Value> =
         vec![user_id.into(), TransactionSource::StartingBalance.as_str().to_string().into()];
     if let Some(start) = start {
-        values.push(date_text(start - Duration::days(MAX_DAYS)).into());
+        values.push(date_text(dates::add_days(start, -MAX_DAYS)).into());
         sql.push_str(&format!(" AND t.booking_date >= ?{}", values.len()));
     }
     if let Some(end) = end {
-        values.push(date_text(end + Duration::days(MAX_DAYS)).into());
+        values.push(date_text(dates::add_days(end, MAX_DAYS)).into());
         sql.push_str(&format!(" AND t.booking_date <= ?{}", values.len()));
     }
     sql.push_str(" ORDER BY t.id");
@@ -122,7 +122,7 @@ pub fn match_transfers(
         }
     }
 
-    let in_range = |date: NaiveDate| start.is_none_or(|s| date >= s) && end.is_none_or(|e| date <= e);
+    let in_range = |date: Date| start.is_none_or(|s| date >= s) && end.is_none_or(|e| date <= e);
     let rejected = rejected_pairs(conn, user_id)?;
     let mut pairs = Vec::new();
     let empty = Vec::new();
@@ -262,8 +262,8 @@ pub fn pair_iban_transfers(conn: &Connection, tx_ids: &[i64]) -> Result<usize> {
                     other,
                     tx.currency,
                     -tx.amount_minor,
-                    date_text(tx.booking_date - Duration::days(MAX_DAYS)),
-                    date_text(tx.booking_date + Duration::days(MAX_DAYS)),
+                    date_text(dates::add_days(tx.booking_date, -MAX_DAYS)),
+                    date_text(dates::add_days(tx.booking_date, MAX_DAYS)),
                 ],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )?

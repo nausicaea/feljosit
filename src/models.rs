@@ -1,6 +1,6 @@
 //! The records of the database and the values of the enumerations.
 
-use chrono::NaiveDate;
+use crate::dates::Date;
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde::Serialize;
 
@@ -291,8 +291,8 @@ pub struct Transaction {
     pub id: i64,
     pub user_id: i64,
     pub account_id: i64,
-    pub booking_date: NaiveDate,
-    pub value_date: Option<NaiveDate>,
+    pub booking_date: Date,
+    pub value_date: Option<Date>,
     pub amount_minor: i64,
     pub currency: String,
     pub counterparty: String,
@@ -357,8 +357,8 @@ impl Transaction {
 pub struct NewTransaction<'a> {
     pub user_id: i64,
     pub account_id: i64,
-    pub booking_date: NaiveDate,
-    pub value_date: Option<NaiveDate>,
+    pub booking_date: Date,
+    pub value_date: Option<Date>,
     pub amount_minor: i64,
     pub currency: &'a str,
     pub counterparty: &'a str,

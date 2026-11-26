@@ -53,7 +53,7 @@ fn authenticate() {
 fn lockout_expires() {
     let (conn, _) = database_with_user();
     let set_lock = |seconds: i64| {
-        let until = datetime_text(now() + chrono::Duration::seconds(seconds));
+        let until = datetime_text(feljosit::dates::add_seconds(now(), seconds));
         conn.execute("UPDATE users SET locked_until = ?1", [until]).unwrap();
     };
     set_lock(60);
@@ -76,7 +76,7 @@ fn sessions() {
     assert_eq!(stored, 0);
     assert!(users::load_session(&conn, "").unwrap().is_none());
     assert!(users::load_session(&conn, &"x".repeat(200)).unwrap().is_none());
-    let past = datetime_text(now() - chrono::Duration::seconds(1));
+    let past = datetime_text(feljosit::dates::add_seconds(now(), -1));
     conn.execute("UPDATE sessions SET expires_at = ?1", [past]).unwrap();
     assert!(users::load_session(&conn, &new.token).unwrap().is_none());
     users::end_session(&conn, &new.token).unwrap();

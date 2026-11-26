@@ -2,9 +2,9 @@
 
 mod common;
 
+use feljosit::dates::Date;
 use std::collections::HashMap;
 
-use chrono::{Datelike, NaiveDate};
 use common::*;
 use feljosit::models::{Account, AccountType};
 use feljosit::services::accounts::{self, ManualTransaction};
@@ -27,7 +27,7 @@ fn setup() -> (rusqlite::Connection, feljosit::models::User, Account, HashMap<St
 fn spend(
     conn: &rusqlite::Connection,
     account: &Account,
-    on: NaiveDate,
+    on: Date,
     amount: i64,
     category: Option<i64>,
     counterparty: &str,
@@ -42,8 +42,8 @@ fn spend(
     accounts::add_manual_transaction(conn, account, &manual).unwrap();
 }
 
-fn day(month: NaiveDate, d: u32) -> NaiveDate {
-    month.with_day(d).unwrap()
+fn day(month: Date, d: u32) -> Date {
+    feljosit::dates::ymd(feljosit::dates::year(month), feljosit::dates::month0(month) + 1, d).unwrap()
 }
 
 fn approx(a: f64, b: f64) -> bool {
@@ -135,7 +135,7 @@ fn flows_with_partial_months() {
         spend(&conn, &account, on, amount, None, "x");
     }
     let flows = reports::monthly_flows(&conn, user.id, date(2026, 1, 10), date(2026, 2, 20)).unwrap();
-    let pairs: Vec<(NaiveDate, i64)> = flows.iter().map(|f| (f.month, f.expenses)).collect();
+    let pairs: Vec<(Date, i64)> = flows.iter().map(|f| (f.month, f.expenses)).collect();
     assert_eq!(pairs, vec![(date(2026, 1, 1), -200), (date(2026, 2, 1), 0)]);
     let worth = reports::net_worth(&conn, user.id, date(2026, 1, 10), date(2026, 2, 20)).unwrap();
     assert_eq!(worth["CHF"].iter().map(|(_, v)| *v).collect::<Vec<_>>(), vec![-300, -300]);
@@ -344,7 +344,7 @@ fn page_setup(counterparty: &str) -> (TestApp, Client, HashMap<String, i64>) {
         let mut stmt = conn.prepare("SELECT name, id FROM categories WHERE user_id = ?1").unwrap();
         let cats: HashMap<String, i64> =
             stmt.query_map([user.id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
-        let today = chrono::Local::now().date_naive().with_day(1).unwrap();
+        let today = feljosit::dates::first_of_month(feljosit::dates::today());
         for i in 0..6 {
             spend(conn, &account, add_months(today, -i), -12345, Some(cats["Groceries"]), counterparty);
         }

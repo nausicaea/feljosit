@@ -433,7 +433,7 @@ pub fn transactions_page(ctx: &mut Ctx<'_>) -> Result<Response> {
             amount_error => found.error,
             filter_params => filter_params,
             selectable => selectable,
-            today => chrono::Local::now().date_naive().format("%Y-%m-%d").to_string(),
+            today => crate::dates::format(crate::dates::today(), "%Y-%m-%d"),
         },
     )
 }
@@ -486,7 +486,7 @@ pub fn set_category(ctx: &mut Ctx<'_>, tx_id: Result<i64>) -> Result<Response> {
                 &format!(
                     "This transaction and the transaction of {} on '{account}' are not a transfer any \
                      more. Give a category to the other transaction too.",
-                    partner.booking_date.format("%d.%m.%Y")
+                    crate::dates::format(partner.booking_date, "%d.%m.%Y")
                 ),
                 false,
             )?;

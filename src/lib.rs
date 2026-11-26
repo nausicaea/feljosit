@@ -6,6 +6,7 @@ pub mod camt053;
 pub mod cardcsv;
 pub mod cli;
 pub mod config;
+pub mod dates;
 pub mod db;
 pub mod iban;
 pub mod models;

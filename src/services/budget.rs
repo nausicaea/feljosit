@@ -11,9 +11,9 @@
 //!   subtracts it from *Ready to Assign* in the next month.
 //! * Transfers and transactions in tracking accounts do not change the budget.
 
+use crate::dates::{self, Date};
 use std::collections::HashMap;
 
-use chrono::{Datelike, NaiveDate};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
@@ -24,27 +24,25 @@ use crate::models::{Category, CategoryGroup, CategoryKind};
 
 pub const MAX_ASSIGNMENT: i64 = 10_000_000_000_000;
 
-pub fn month_start(value: NaiveDate) -> NaiveDate {
-    value.with_day(1).expect("Day 1 exists in each month")
+pub fn month_start(value: Date) -> Date {
+    dates::first_of_month(value)
 }
 
-pub fn add_months(value: NaiveDate, months: i32) -> NaiveDate {
-    let index = value.year() * 12 + value.month0() as i32 + months;
-    NaiveDate::from_ymd_opt(index.div_euclid(12), index.rem_euclid(12) as u32 + 1, 1)
-        .expect("The month is valid")
+pub fn add_months(value: Date, months: i32) -> Date {
+    dates::from_month_index(dates::month_index(value) + months).expect("The month is valid")
 }
 
 /// The last day of the month of `month`.
-pub fn last_day_of_month(month: NaiveDate) -> NaiveDate {
-    add_months(month, 1).pred_opt().expect("The date is valid")
+pub fn last_day_of_month(month: Date) -> Date {
+    dates::last_of_month(month)
 }
 
-pub fn month_param(value: NaiveDate) -> String {
-    value.format("%Y-%m").to_string()
+pub fn month_param(value: Date) -> String {
+    crate::dates::format(value, "%Y-%m")
 }
 
 /// Parse a month (`YYYY-MM`). An empty value gives the month of `default`.
-pub fn parse_month(text: Option<&str>, default: NaiveDate) -> Result<NaiveDate> {
+pub fn parse_month(text: Option<&str>, default: Date) -> Result<Date> {
     let Some(text) = text.filter(|t| !t.is_empty()) else {
         return Ok(month_start(default));
     };
@@ -62,7 +60,7 @@ pub fn parse_month(text: Option<&str>, default: NaiveDate) -> Result<NaiveDate> 
     if !(1..=9999).contains(&year) || !(1..=12).contains(&month) {
         return Err(invalid());
     }
-    NaiveDate::from_ymd_opt(year, month as u32, 1).ok_or_else(invalid)
+    crate::dates::ymd(year, month as u32, 1).ok_or_else(invalid)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -86,7 +84,7 @@ pub struct GroupRows {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MonthBudget {
-    pub month: NaiveDate,
+    pub month: Date,
     pub ready_to_assign: i64,
     pub income: i64,
     pub assigned: i64,
@@ -96,13 +94,13 @@ pub struct MonthBudget {
     pub uncategorised_count: i64,
 }
 
-type ByCategoryMonth = HashMap<(i64, NaiveDate), i64>;
+type ByCategoryMonth = HashMap<(i64, Date), i64>;
 
 /// Return (assigned, expense activity, income) per (category, month) / month.
 fn monthly(
     conn: &Connection,
     user_id: i64,
-) -> Result<(ByCategoryMonth, ByCategoryMonth, HashMap<NaiveDate, i64>)> {
+) -> Result<(ByCategoryMonth, ByCategoryMonth, HashMap<Date, i64>)> {
     let mut stmt = conn.prepare(
         "SELECT t.category_id, c.kind, date(t.booking_date, 'start of month'), sum(t.amount_minor) \
          FROM transactions t JOIN accounts a ON t.account_id = a.id \
@@ -119,7 +117,7 @@ fn monthly(
         ))
     })?;
     let mut activity = HashMap::new();
-    let mut income: HashMap<NaiveDate, i64> = HashMap::new();
+    let mut income: HashMap<Date, i64> = HashMap::new();
     for row in rows {
         let (category_id, kind, month, total) = row?;
         let month = parse_date(&month);
@@ -142,7 +140,7 @@ fn monthly(
     Ok((assigned, activity, income))
 }
 
-pub fn month_budget(conn: &Connection, user_id: i64, month: NaiveDate) -> Result<MonthBudget> {
+pub fn month_budget(conn: &Connection, user_id: i64, month: Date) -> Result<MonthBudget> {
     let month = month_start(month);
     let (assigned, activity, income) = monthly(conn, user_id)?;
     let groups = CategoryGroup::list(conn, user_id)?;
@@ -234,7 +232,7 @@ pub fn assign(
     conn: &Connection,
     user_id: i64,
     category_id: i64,
-    month: NaiveDate,
+    month: Date,
     amount_minor: i64,
 ) -> Result<Category> {
     let category = owned_category(conn, user_id, category_id)?;
@@ -274,8 +272,8 @@ pub fn assign(
 mod tests {
     use super::*;
 
-    fn d(y: i32, m: u32, day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    fn d(y: i32, m: u32, day: u32) -> Date {
+        crate::dates::ymd(y, m, day).unwrap()
     }
 
     #[test]

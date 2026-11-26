@@ -1,8 +1,8 @@
 //! Statistics for the reports pages.
 
+use crate::dates::{self, Date};
 use std::collections::{BTreeMap, HashMap};
 
-use chrono::{Datelike, NaiveDate};
 use rusqlite::{Connection, params};
 use serde::Serialize;
 
@@ -14,7 +14,7 @@ use crate::money::round_half_even;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MonthFlow {
-    pub month: NaiveDate,
+    pub month: Date,
     pub income: i64,
     pub expenses: i64,
     pub net: i64,
@@ -35,7 +35,7 @@ pub struct Summary {
     pub average_monthly_expenses: i64,
 }
 
-pub fn months_between(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
+pub fn months_between(start: Date, end: Date) -> Vec<Date> {
     let mut months = Vec::new();
     let mut current = month_start(start);
     while current <= end {
@@ -47,7 +47,7 @@ pub fn months_between(start: NaiveDate, end: NaiveDate) -> Vec<NaiveDate> {
 
 /// The booking dates of the first and the last transaction of all accounts. Return
 /// `None` if the user has no transactions.
-pub fn transaction_date_range(conn: &Connection, user_id: i64) -> Result<Option<(NaiveDate, NaiveDate)>> {
+pub fn transaction_date_range(conn: &Connection, user_id: i64) -> Result<Option<(Date, Date)>> {
     let (first, last): (Option<String>, Option<String>) = conn.query_row(
         "SELECT min(booking_date), max(booking_date) FROM transactions WHERE user_id = ?1",
         [user_id],
@@ -73,12 +73,7 @@ const MONTH_EXPR: &str = "date(t.booking_date, 'start of month')";
 ///
 /// For an uncategorised transaction, the sign decides: an inflow is income and an
 /// outflow is an expense.
-pub fn monthly_flows(
-    conn: &Connection,
-    user_id: i64,
-    start: NaiveDate,
-    end: NaiveDate,
-) -> Result<Vec<MonthFlow>> {
+pub fn monthly_flows(conn: &Connection, user_id: i64, start: Date, end: Date) -> Result<Vec<MonthFlow>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {MONTH_EXPR}, c.kind, t.amount_minor > 0, sum(t.amount_minor) \
          FROM transactions t JOIN accounts a ON t.account_id = a.id \
@@ -93,8 +88,8 @@ pub fn monthly_flows(
             row.get::<_, i64>(3)?,
         ))
     })?;
-    let mut income: HashMap<NaiveDate, i64> = HashMap::new();
-    let mut expenses: HashMap<NaiveDate, i64> = HashMap::new();
+    let mut income: HashMap<Date, i64> = HashMap::new();
+    let mut expenses: HashMap<Date, i64> = HashMap::new();
     for row in rows {
         let (month, kind, inflow, total) = row?;
         let month = parse_date(&month);
@@ -120,8 +115,8 @@ pub fn monthly_flows(
 pub fn spending_by_category(
     conn: &Connection,
     user_id: i64,
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
 ) -> Result<Vec<CategoryTotal>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT t.category_id, c.name, sum(t.amount_minor) \
@@ -162,9 +157,9 @@ pub fn summary(flows: &[MonthFlow]) -> Summary {
 pub fn net_worth(
     conn: &Connection,
     user_id: i64,
-    start: NaiveDate,
-    end: NaiveDate,
-) -> Result<BTreeMap<String, Vec<(NaiveDate, i64)>>> {
+    start: Date,
+    end: Date,
+) -> Result<BTreeMap<String, Vec<(Date, i64)>>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT a.currency, {MONTH_EXPR}, sum(t.amount_minor) \
          FROM transactions t JOIN accounts a ON t.account_id = a.id \
@@ -174,7 +169,7 @@ pub fn net_worth(
     let rows = stmt.query_map(params![user_id, date_text(end)], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
     })?;
-    let mut changes: BTreeMap<String, HashMap<NaiveDate, i64>> = BTreeMap::new();
+    let mut changes: BTreeMap<String, HashMap<Date, i64>> = BTreeMap::new();
     for row in rows {
         let (currency, month, total) = row?;
         changes.entry(currency).or_default().insert(parse_date(&month), total);
@@ -220,9 +215,9 @@ pub fn bucket_months(month_count: usize) -> u32 {
 
 /// The first month of the bucket that contains `month`. The buckets are calendar
 /// months, quarters or years.
-pub fn bucket_start(month: NaiveDate, size: u32) -> NaiveDate {
-    let index = (month.year() * 12 + month.month0() as i32).div_euclid(size as i32) * size as i32;
-    NaiveDate::from_ymd_opt(index.div_euclid(12), index.rem_euclid(12) as u32 + 1, 1).expect("valid month")
+pub fn bucket_start(month: Date, size: u32) -> Date {
+    let index = dates::month_index(month).div_euclid(size as i32) * size as i32;
+    dates::from_month_index(index).expect("valid month")
 }
 
 /// The spending of one row (a category or a counterparty) in a period.
@@ -265,9 +260,9 @@ pub struct CategoryGroupSeries {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpendingComparison {
-    pub months: Vec<NaiveDate>,
+    pub months: Vec<Date>,
     /// The first month of each bucket (column).
-    pub buckets: Vec<NaiveDate>,
+    pub buckets: Vec<Date>,
     pub bucket_months: u32,
     pub rows: Vec<SpendingSeries>,
     /// Average spending per month of all rows in each bucket.
@@ -297,17 +292,17 @@ fn trend(monthly: &[i64]) -> (Option<i64>, Option<f64>) {
 
 /// The months and the buckets (columns) of a period.
 struct Grid {
-    months: Vec<NaiveDate>,
+    months: Vec<Date>,
     size: u32,
-    buckets: Vec<NaiveDate>,
+    buckets: Vec<Date>,
     bucket_sizes: Vec<i64>,
 }
 
 impl Grid {
-    fn of(start: NaiveDate, end: NaiveDate) -> Grid {
+    fn of(start: Date, end: Date) -> Grid {
         let months = months_between(start, end);
         let size = bucket_months(months.len());
-        let mut buckets: Vec<NaiveDate> = months.iter().map(|m| bucket_start(*m, size)).collect();
+        let mut buckets: Vec<Date> = months.iter().map(|m| bucket_start(*m, size)).collect();
         buckets.dedup();
         let mut sizes = vec![0; buckets.len()];
         for m in &months {
@@ -317,7 +312,7 @@ impl Grid {
         Grid { months, size, buckets, bucket_sizes: sizes }
     }
 
-    fn month_index(&self) -> HashMap<NaiveDate, usize> {
+    fn month_index(&self) -> HashMap<Date, usize> {
         self.months.iter().enumerate().map(|(i, m)| (*m, i)).collect()
     }
 
@@ -382,7 +377,7 @@ impl Grid {
     }
 }
 
-fn period_params(user_id: i64, start: NaiveDate, end: NaiveDate) -> [rusqlite::types::Value; 3] {
+fn period_params(user_id: i64, start: Date, end: Date) -> [rusqlite::types::Value; 3] {
     [user_id.into(), date_text(start).into(), date_text(end).into()]
 }
 
@@ -398,8 +393,8 @@ type SortKey = (bool, i64, String, i64, String);
 pub fn compare_categories(
     conn: &Connection,
     user_id: i64,
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
 ) -> Result<SpendingComparison> {
     let mut stmt = conn.prepare(&format!(
         "SELECT t.category_id, c.name, g.name, g.sort_order, c.sort_order, {MONTH_EXPR}, \
@@ -496,8 +491,8 @@ const SPENDING_FROM: &str = "FROM transactions t JOIN accounts a ON t.account_id
 pub fn compare_counterparties(
     conn: &Connection,
     user_id: i64,
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
     limit: usize,
 ) -> Result<SpendingComparison> {
     let grid = Grid::of(start, end);
@@ -591,8 +586,8 @@ pub fn top_counterparties(
     conn: &Connection,
     user_id: i64,
     category_id: Option<i64>,
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
     limit: usize,
 ) -> Result<Vec<CounterpartyTotal>> {
     let category_filter = match category_id {
@@ -625,8 +620,8 @@ pub fn counterparty_series(
     conn: &Connection,
     user_id: i64,
     counterparty: &str,
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
 ) -> Result<Option<SpendingSeries>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {MONTH_EXPR}, t.counterparty = ?4, sum(t.amount_minor) {SPENDING_FROM} \
@@ -672,8 +667,8 @@ pub fn counterparty_categories(
     conn: &Connection,
     user_id: i64,
     counterparty: &str,
-    start: NaiveDate,
-    end: NaiveDate,
+    start: Date,
+    end: Date,
 ) -> Result<Vec<CounterpartyCategory>> {
     let mut stmt = conn.prepare(&format!(
         "SELECT t.category_id, c.name, count(*), sum(t.amount_minor) {SPENDING_FROM} \
@@ -705,8 +700,8 @@ pub fn counterparty_categories(
 mod tests {
     use super::*;
 
-    fn d(y: i32, m: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, 1).unwrap()
+    fn d(y: i32, m: u32) -> Date {
+        crate::dates::ymd(y, m, 1).unwrap()
     }
 
     #[test]

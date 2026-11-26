@@ -2,9 +2,9 @@
 
 mod common;
 
-use chrono::NaiveDate;
 use common::{FilePart, TestApp, database_with_user, fixture};
 use feljosit::cardcsv::{self, parse_file};
+use feljosit::dates::Date;
 use feljosit::models::{Account, AccountType, TransactionSource, User};
 use feljosit::services::accounts::{self, ManualTransaction, NewAccount};
 use feljosit::services::importer::{ImportRequest, import_statement_file};
@@ -32,8 +32,8 @@ fn line(changes: &[(&str, &str)]) -> String {
     values.join(",")
 }
 
-fn date(y: i32, m: u32, d: u32) -> NaiveDate {
-    NaiveDate::from_ymd_opt(y, m, d).unwrap()
+fn date(y: i32, m: u32, d: u32) -> Date {
+    feljosit::dates::ymd(y, m, d).unwrap()
 }
 
 #[test]

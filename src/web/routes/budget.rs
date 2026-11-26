@@ -8,8 +8,8 @@ use crate::services::Error as ServiceError;
 use crate::services::budget::{self, add_months, month_param, month_start};
 use crate::web::{AppError, Ctx, ParamsExt, Response, Result};
 
-fn today() -> chrono::NaiveDate {
-    chrono::Local::now().date_naive()
+fn today() -> crate::dates::Date {
+    crate::dates::today()
 }
 
 pub fn budget_page(ctx: &mut Ctx<'_>) -> Result<Response> {

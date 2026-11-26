@@ -3,9 +3,9 @@
 //! The templates are in the directory `templates`. The build puts them into the
 //! executable. Thus the application is one file.
 
+use crate::dates::{self, Date};
 use std::fmt::Write as _;
 
-use chrono::{Datelike, NaiveDate};
 use minijinja::value::{Kwargs, Value, ValueKind};
 use minijinja::{AutoEscape, Environment, Error, ErrorKind, State};
 
@@ -49,12 +49,12 @@ pub const MONTH_NAMES: [&str; 12] = [
     "December",
 ];
 
-pub fn month_label(value: NaiveDate) -> String {
-    format!("{} {}", MONTH_NAMES[value.month0() as usize], value.year())
+pub fn month_label(value: Date) -> String {
+    format!("{} {}", MONTH_NAMES[dates::month0(value) as usize], dates::year(value))
 }
 
-pub fn month_short(value: NaiveDate) -> String {
-    format!("{} {:02}", &MONTH_NAMES[value.month0() as usize][..3], value.year().rem_euclid(100))
+pub fn month_short(value: Date) -> String {
+    format!("{} {:02}", &MONTH_NAMES[dates::month0(value) as usize][..3], dates::year(value).rem_euclid(100))
 }
 
 /// Escape a text for HTML, as MarkupSafe (the escaping of Jinja2) does it.
@@ -73,9 +73,9 @@ pub fn escape_html(text: &str) -> String {
     out
 }
 
-fn date_of(value: &Value) -> Option<NaiveDate> {
+fn date_of(value: &Value) -> Option<Date> {
     let text = value.as_str()?;
-    NaiveDate::parse_from_str(text.get(..10)?, "%Y-%m-%d").ok()
+    dates::parse(text.get(..10)?, "%Y-%m-%d")
 }
 
 fn number(value: &Value) -> Result<f64, Error> {
@@ -98,7 +98,7 @@ fn money(value: Value, currency: Option<String>) -> Result<String, Error> {
 }
 
 fn swiss_date(value: Value) -> String {
-    date_of(&value).map(|d| d.format("%d.%m.%Y").to_string()).unwrap_or_default()
+    date_of(&value).map(|d| crate::dates::format(d, "%d.%m.%Y")).unwrap_or_default()
 }
 
 fn month_label_filter(value: Value) -> String {
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn labels() {
-        let d = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+        let d = crate::dates::ymd(2026, 11, 1).unwrap();
         assert_eq!(month_label(d), "November 2026");
         assert_eq!(month_short(d), "Nov 26");
     }

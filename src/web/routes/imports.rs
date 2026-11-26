@@ -17,8 +17,9 @@ fn page(ctx: &Ctx<'_>, auth: &Auth, error: Option<&str>, result: Option<Value>) 
     let history: Vec<Value> = stmt
         .query_map([auth.user.id], |row| {
             let imported: String = row.get(3)?;
-            let text =
-                parse_datetime(&imported).map(|t| t.format("%d.%m.%Y %H:%M").to_string()).unwrap_or(imported);
+            let text = parse_datetime(&imported)
+                .map(|t| crate::dates::format_utc(t, "%d.%m.%Y %H:%M"))
+                .unwrap_or(imported);
             Ok(context! {
                 filename => row.get::<_, String>(0)?,
                 new_count => row.get::<_, i64>(1)?,

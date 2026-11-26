@@ -1,9 +1,9 @@
 //! Import of camt.053 statements and credit card CSV files.
 
+use crate::dates::Date;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -235,7 +235,7 @@ fn check_account(conn: &Connection, account: &mut Account, statement: &Statement
 struct Pending {
     tx_id: i64,
     statement: usize,
-    booking_date: NaiveDate,
+    booking_date: Date,
     counterparty: String,
     counterparty_iban: Option<String>,
     description: String,
@@ -447,7 +447,7 @@ fn match_pending_transfers(
     Ok(())
 }
 
-fn balance_on(conn: &Connection, account_id: i64, on: NaiveDate) -> rusqlite::Result<i64> {
+fn balance_on(conn: &Connection, account_id: i64, on: Date) -> rusqlite::Result<i64> {
     conn.query_row(
         "SELECT coalesce(sum(amount_minor), 0) FROM transactions WHERE account_id = ?1 \
          AND booking_date <= ?2",
