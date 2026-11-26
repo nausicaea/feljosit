@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
 from feljosit.models import Account, Category, CategoryGroup, CategoryKind, Transaction
@@ -193,11 +193,17 @@ def bucket_start(month: date, size: int) -> date:
 
 
 @dataclass(frozen=True)
-class CategorySeries:
-    """The spending of one category in a period. Spending is positive, refunds are negative."""
+class SpendingSeries:
+    """The spending of one row (a category or a counterparty) in a period.
 
-    category_id: int | None
+    Spending is positive. Refunds are negative.
+    """
+
+    #: The value that selects the row in the URL: a category ID, "uncategorised" or a
+    #: counterparty name. ``None`` if the row cannot be selected.
+    key: str | None
     name: str
+    #: The category group of a category. The main category of a counterparty.
     group: str
     #: Spending for each month of the period.
     monthly: tuple[int, ...]
@@ -206,44 +212,52 @@ class CategorySeries:
     values: tuple[int, ...]
     total: int
     average_per_month: int
-    #: Part of the spending of all categories, in percent.
+    #: Part of the spending of all rows, in percent.
     share: float
     #: Average per month of the last ``RECENT_MONTHS`` months.
     recent_average: int | None
     #: Change of ``recent_average`` against the average of the months before, in percent.
     change_percent: float | None
+    #: The category ID of a category row. ``None`` for "Uncategorised" and counterparties.
+    category_id: int | None = None
+
+
+CategorySeries = SpendingSeries
 
 
 @dataclass(frozen=True)
 class CategoryGroupSeries:
     name: str
-    rows: tuple[CategorySeries, ...]
-    #: Average spending per month in each bucket, as in ``CategorySeries.values``.
+    rows: tuple[SpendingSeries, ...]
+    #: Average spending per month in each bucket, as in ``SpendingSeries.values``.
     values: tuple[int, ...]
     total: int
 
     @property
     def uncategorised(self) -> bool:
-        return self.rows[0].category_id is None
+        return self.rows[0].key == UNCATEGORISED
 
 
 @dataclass(frozen=True)
-class CategoryComparison:
+class SpendingComparison:
     months: tuple[date, ...]
     #: The first month of each bucket (column).
     buckets: tuple[date, ...]
     bucket_months: int
-    rows: tuple[CategorySeries, ...]
-    groups: tuple[CategoryGroupSeries, ...]
-    #: Average spending per month of all categories in each bucket.
+    rows: tuple[SpendingSeries, ...]
+    #: Average spending per month of all rows in each bucket.
     totals: tuple[int, ...]
     total: int
     has_trend: bool
+    #: The category groups (only for the category comparison).
+    groups: tuple[CategoryGroupSeries, ...] = ()
+    #: The sum of the rows that are not shown (only for the counterparty comparison).
+    other: SpendingSeries | None = None
 
 
-# The order of the budget page: group order, group name, category order, category name.
-# "Uncategorised" is the last row.
-_SortKey = tuple[bool, int, str, int, str]
+CategoryComparison = SpendingComparison
+
+UNCATEGORISED = "uncategorised"
 
 
 def _trend(monthly: list[int]) -> tuple[int | None, float | None]:
@@ -258,7 +272,99 @@ def _trend(monthly: list[int]) -> tuple[int | None, float | None]:
     return recent_average, (recent_average - before_average) / before_average * 100
 
 
-def compare_categories(db: Session, user_id: int, start: date, end: date) -> CategoryComparison:
+def _spending_filter() -> ColumnElement[bool]:
+    """Expense categories and uncategorised outflows: the spending of the reports."""
+    return (Category.kind == CategoryKind.EXPENSE) | (
+        Transaction.category_id.is_(None) & (Transaction.amount_minor < 0)
+    )
+
+
+@dataclass(frozen=True)
+class _Grid:
+    """The months and the buckets (columns) of a period."""
+
+    months: list[date]
+    size: int
+    buckets: list[date]
+    bucket_sizes: list[int]
+
+    @classmethod
+    def of(cls, start: date, end: date) -> _Grid:
+        months = months_between(start, end)
+        size = bucket_months(len(months))
+        buckets = sorted({bucket_start(m, size) for m in months})
+        index = {b: i for i, b in enumerate(buckets)}
+        sizes = [0] * len(buckets)
+        for m in months:
+            sizes[index[bucket_start(m, size)]] += 1
+        return cls(months, size, buckets, sizes)
+
+    def month_index(self) -> dict[date, int]:
+        return {m: i for i, m in enumerate(self.months)}
+
+    def bucket_values(self, monthly: list[int]) -> tuple[int, ...]:
+        """The average per month of each bucket."""
+        index = {b: i for i, b in enumerate(self.buckets)}
+        sums = [0] * len(self.buckets)
+        for m, v in zip(self.months, monthly, strict=True):
+            sums[index[bucket_start(m, self.size)]] += v
+        return tuple(round(v / n) for v, n in zip(sums, self.bucket_sizes, strict=True))
+
+
+def _build_series(
+    grid: _Grid,
+    *,
+    key: str | None,
+    name: str,
+    group: str,
+    monthly: list[int],
+    grand_total: int,
+    category_id: int | None = None,
+) -> SpendingSeries:
+    total = sum(monthly)
+    recent, change = _trend(monthly)
+    return SpendingSeries(
+        key=key,
+        name=name,
+        group=group,
+        monthly=tuple(monthly),
+        values=grid.bucket_values(monthly),
+        total=total,
+        average_per_month=round(total / len(grid.months)) if grid.months else 0,
+        share=(total / grand_total * 100) if grand_total > 0 else 0.0,
+        recent_average=recent,
+        change_percent=change,
+        category_id=category_id,
+    )
+
+
+def _comparison(
+    grid: _Grid,
+    rows: tuple[SpendingSeries, ...],
+    *,
+    groups: tuple[CategoryGroupSeries, ...] = (),
+    other: SpendingSeries | None = None,
+) -> SpendingComparison:
+    shown = (*rows, other) if other is not None else rows
+    return SpendingComparison(
+        months=tuple(grid.months),
+        buckets=tuple(grid.buckets),
+        bucket_months=grid.size,
+        rows=rows,
+        totals=tuple(sum(r.values[i] for r in shown) for i in range(len(grid.buckets))),
+        total=sum(r.total for r in shown),
+        has_trend=len(grid.months) >= MIN_MONTHS_FOR_TREND,
+        groups=groups,
+        other=other,
+    )
+
+
+# The order of the budget page: group order, group name, category order, category name.
+# "Uncategorised" is the last row.
+_SortKey = tuple[bool, int, str, int, str]
+
+
+def compare_categories(db: Session, user_id: int, start: date, end: date) -> SpendingComparison:
     """Spending per expense category and month, for the comparison of categories over time.
 
     The same transactions as in :func:`spending_by_category`: expense categories and
@@ -279,29 +385,15 @@ def compare_categories(db: Session, user_id: int, start: date, end: date) -> Cat
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .outerjoin(CategoryGroup, Category.group_id == CategoryGroup.id)
-        .where(
-            *_budget_tx_filter(user_id, start, end),  # type: ignore[arg-type]
-            (Category.kind == CategoryKind.EXPENSE)
-            | (Transaction.category_id.is_(None) & (Transaction.amount_minor < 0)),
-        )
+        .where(*_budget_tx_filter(user_id, start, end), _spending_filter())  # type: ignore[arg-type]
         .group_by(Transaction.category_id, month_expr)
     )
-    months = months_between(start, end)
-    index = {m: i for i, m in enumerate(months)}
-    size = bucket_months(len(months))
-    buckets = sorted({bucket_start(m, size) for m in months})
-    bucket_index = {b: i for i, b in enumerate(buckets)}
-    bucket_sizes = [0] * len(buckets)
-    for m in months:
-        bucket_sizes[bucket_index[bucket_start(m, size)]] += 1
-
-    def per_month(sums: list[int]) -> tuple[int, ...]:
-        return tuple(round(v / n) for v, n in zip(sums, bucket_sizes, strict=True))
-
+    grid = _Grid.of(start, end)
+    index = grid.month_index()
     found: dict[int | None, tuple[str, str, _SortKey, list[int]]] = {}
     for category_id, name, group, group_order, order, month_text, total in rows:
         if category_id not in found:
-            key: _SortKey = (
+            sort_key: _SortKey = (
                 category_id is None,
                 group_order or 0,
                 group or "",
@@ -311,39 +403,32 @@ def compare_categories(db: Session, user_id: int, start: date, end: date) -> Cat
             found[category_id] = (
                 name or "Uncategorised",
                 group or "Uncategorised",
-                key,
-                [0] * len(months),
+                sort_key,
+                [0] * len(grid.months),
             )
         found[category_id][3][index[date.fromisoformat(month_text)]] -= int(total)
 
     grand_total = sum(sum(m) for *_, m in found.values())
-    series: list[tuple[_SortKey, CategorySeries]] = []
-    for category_id, (name, group, sort_key, monthly) in found.items():
-        if not any(monthly):
-            continue
-        total = sum(monthly)
-        sums = [0] * len(buckets)
-        for m, v in zip(months, monthly, strict=True):
-            sums[bucket_index[bucket_start(m, size)]] += v
-        recent, change = _trend(monthly)
-        series.append(
+    series = sorted(
+        (
             (
                 sort_key,
-                CategorySeries(
-                    category_id=category_id,
+                _build_series(
+                    grid,
+                    key=UNCATEGORISED if category_id is None else str(category_id),
                     name=name,
                     group=group,
-                    monthly=tuple(monthly),
-                    values=per_month(sums),
-                    total=total,
-                    average_per_month=round(total / len(months)) if months else 0,
-                    share=(total / grand_total * 100) if grand_total > 0 else 0.0,
-                    recent_average=recent,
-                    change_percent=change,
+                    monthly=monthly,
+                    grand_total=grand_total,
+                    category_id=category_id,
                 ),
             )
-        )
-    ordered = tuple(s for _, s in sorted(series, key=lambda item: item[0]))
+            for category_id, (name, group, sort_key, monthly) in found.items()
+            if any(monthly)
+        ),
+        key=lambda item: item[0],
+    )
+    ordered = tuple(s for _, s in series)
     groups: list[CategoryGroupSeries] = []
     for row in ordered:
         if groups and groups[-1].name == row.group:
@@ -356,17 +441,89 @@ def compare_categories(db: Session, user_id: int, start: date, end: date) -> Cat
             )
         else:
             groups.append(CategoryGroupSeries(row.group, (row,), row.values, row.total))
-    totals = tuple(sum(r.values[i] for r in ordered) for i in range(len(buckets)))
-    return CategoryComparison(
-        months=tuple(months),
-        buckets=tuple(buckets),
-        bucket_months=size,
-        rows=ordered,
-        groups=tuple(groups),
-        totals=totals,
-        total=sum(r.total for r in ordered),
-        has_trend=len(months) >= MIN_MONTHS_FOR_TREND,
+    return _comparison(grid, ordered, groups=tuple(groups))
+
+
+MAX_COUNTERPARTIES = 30
+"""The counterparty comparison shows this number of counterparties. The rest is one row."""
+NO_COUNTERPARTY = "(No counterparty)"
+
+
+def compare_counterparties(
+    db: Session, user_id: int, start: date, end: date, limit: int = MAX_COUNTERPARTIES
+) -> SpendingComparison:
+    """Spending per counterparty and month, for the comparison of counterparties over time.
+
+    The same transactions as in :func:`compare_categories`. The rows are the ``limit``
+    counterparties with the most spending, largest first. ``other`` is the sum of the
+    other counterparties. Thus the total is the same as in :func:`compare_categories`.
+    """
+    month_expr = func.date(Transaction.booking_date, "start of month")
+    base = (
+        select()
+        .select_from(Transaction)
+        .join(Account, Transaction.account_id == Account.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .where(*_budget_tx_filter(user_id, start, end), _spending_filter())  # type: ignore[arg-type]
     )
+    rows = db.execute(
+        base.add_columns(
+            Transaction.counterparty, month_expr, func.sum(Transaction.amount_minor)
+        ).group_by(Transaction.counterparty, month_expr)
+    )
+    grid = _Grid.of(start, end)
+    index = grid.month_index()
+    monthly_by_name: dict[str, list[int]] = defaultdict(lambda: [0] * len(grid.months))
+    for name, month_text, total in rows:
+        monthly_by_name[name or ""][index[date.fromisoformat(month_text)]] -= int(total)
+
+    # The main category of each counterparty: the category with the most spending.
+    main: dict[str, tuple[int, str, int]] = {}
+    category_rows = db.execute(
+        base.add_columns(
+            Transaction.counterparty, Category.name, func.sum(Transaction.amount_minor)
+        ).group_by(Transaction.counterparty, Transaction.category_id)
+    )
+    for name, category, total in category_rows:
+        key = name or ""
+        spent = -int(total)
+        best, label, count = main.get(key, (0, "", 0))
+        if count == 0 or spent > best:
+            best, label = spent, category or "Uncategorised"
+        main[key] = (best, label, count + 1)
+
+    def group_label(name: str) -> str:
+        _, label, count = main.get(name, (0, "", 0))
+        return label if count <= 1 else f"{label} and {count - 1} more"
+
+    grand_total = sum(sum(m) for m in monthly_by_name.values())
+    by_total = sorted(
+        ((name, m) for name, m in monthly_by_name.items() if any(m)),
+        key=lambda item: (-sum(item[1]), item[0]),
+    )
+    shown = tuple(
+        _build_series(
+            grid,
+            key=name or None,
+            name=name or NO_COUNTERPARTY,
+            group=group_label(name),
+            monthly=monthly,
+            grand_total=grand_total,
+        )
+        for name, monthly in by_total[:limit]
+    )
+    rest = by_total[limit:]
+    other = None
+    if rest:
+        other = _build_series(
+            grid,
+            key=None,
+            name=f"Other counterparties ({len(rest)})",
+            group="",
+            monthly=[sum(m[i] for _, m in rest) for i in range(len(grid.months))],
+            grand_total=grand_total,
+        )
+    return _comparison(grid, shown, other=other)
 
 
 @dataclass(frozen=True)
@@ -401,4 +558,72 @@ def top_counterparties(
     )
     return [
         CounterpartyTotal(name or "—", int(count), -int(amount)) for name, count, amount in rows
+    ]
+
+
+def counterparty_series(
+    db: Session, user_id: int, counterparty: str, start: date, end: date
+) -> SpendingSeries | None:
+    """The spending of one counterparty, also if it is not in the comparison table.
+
+    ``share`` is the part of the spending of all counterparties. Return ``None`` if
+    the counterparty has no spending in the period.
+    """
+    month_expr = func.date(Transaction.booking_date, "start of month")
+    is_selected = Transaction.counterparty == counterparty
+    rows = db.execute(
+        select(month_expr, is_selected, func.sum(Transaction.amount_minor))
+        .join(Account, Transaction.account_id == Account.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .where(*_budget_tx_filter(user_id, start, end), _spending_filter())  # type: ignore[arg-type]
+        .group_by(month_expr, is_selected)
+    )
+    grid = _Grid.of(start, end)
+    index = grid.month_index()
+    monthly = [0] * len(grid.months)
+    grand_total = 0
+    for month_text, selected, total in rows:
+        grand_total -= int(total)
+        if selected:
+            monthly[index[date.fromisoformat(month_text)]] -= int(total)
+    if not any(monthly):
+        return None
+    return _build_series(
+        grid,
+        key=counterparty,
+        name=counterparty,
+        group="",
+        monthly=monthly,
+        grand_total=grand_total,
+    )
+
+
+@dataclass(frozen=True)
+class CounterpartyCategory:
+    category_id: int | None
+    name: str
+    count: int
+    total: int
+
+
+def counterparty_categories(
+    db: Session, user_id: int, counterparty: str, start: date, end: date
+) -> list[CounterpartyCategory]:
+    """The spending of one counterparty in each category, largest first."""
+    total = func.sum(Transaction.amount_minor)
+    rows = db.execute(
+        select(Transaction.category_id, Category.name, func.count(), total)
+        .join(Account, Transaction.account_id == Account.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .where(
+            *_budget_tx_filter(user_id, start, end),  # type: ignore[arg-type]
+            _spending_filter(),
+            Transaction.counterparty == counterparty,
+        )
+        .group_by(Transaction.category_id, Category.name)
+        .order_by(total, Category.name)
+    )
+    return [
+        CounterpartyCategory(category_id, name or "Uncategorised", int(count), -int(amount))
+        for category_id, name, count, amount in rows
     ]
