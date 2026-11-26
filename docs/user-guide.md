@@ -140,8 +140,9 @@ The page shows:
 - Net worth (all accounts, one chart for each currency).
 
 To compare the categories over time, click "Spending by category" below the
-title. See "Procedure: find expenses that you can reduce". The two report pages
-use the same period.
+title. To compare the counterparties, click "Spending by counterparty". See
+"Procedure: find expenses that you can reduce" and "Procedure: compare
+counterparties". All report pages use the same period.
 
 The reports use only budget accounts, except the net worth. Transfers are not included.
 
@@ -180,6 +181,30 @@ transfers. A refund decreases the spending of its category.
 
 TIP: Categorise all transactions before you use the report. Uncategorised
 outflows are in one row, "Uncategorised".
+
+## Procedure: compare counterparties
+
+1. Click "Reports".
+2. Click "Spending by counterparty".
+3. Select the period.
+4. Click "Largest total" or "Largest increase" to sort the counterparties.
+5. Click a counterparty to see the details.
+
+The table is the same as in "Spending by category", but it has one row for each
+counterparty: for example a shop, a restaurant or a landlord. It shows the 30
+counterparties with the most spending. The other counterparties are in one row,
+"Other counterparties". Thus the total is the same as in "Spending by category".
+
+The small text below the name shows the category with the most spending for the
+counterparty. The details of a counterparty show its spending per month and its
+spending in each category.
+
+To go from a category to a counterparty, click the counterparty in the details
+of the category.
+
+NOTE: The report uses the counterparty name of the transaction. If your bank
+writes the name of the same shop in different ways (for example with the
+location), the shop has more than one row.
 
 ## Procedure: change your password
 
