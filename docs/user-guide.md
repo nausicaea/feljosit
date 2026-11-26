@@ -120,14 +120,23 @@ because the money leaves the budget.
 1. Click "Transactions".
 2. Filter the transactions. For example, type the name of your health insurance in
    "Search", select "Outflows (−)" and type 300 in "Minimum amount".
-3. Select the checkbox of each transaction. Or select "Select all on this page".
+3. Select the checkbox of each transaction. Or select "Select all N matching
+   transactions".
 4. In "Category for the selected transactions", select a category.
 5. Click "Assign the category".
+6. If you selected all matching transactions, click "OK" to confirm the change.
+
+"Select all N matching transactions" includes the transactions of all pages, not
+only the transactions of the current page. If you then clear one checkbox, only the
+checked transactions of the page stay selected.
 
 The change is the same as a change of each transaction. If a transaction is in a
 transfer pair, the other transaction stops being a transfer too. Transactions in
-tracking accounts have no checkbox. You can select a maximum of 100 transactions,
-the transactions of one page.
+tracking accounts have no checkbox, and the application does not change them.
+
+CAUTION: If the matching transactions change before you click "Assign the category"
+(for example, because of an import), the application changes nothing. Examine the
+list and do the change again.
 
 ## Procedure: filter the transactions
 

@@ -85,7 +85,6 @@ form.inline { display: inline; }
 .columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
 label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: 0.9rem; color: var(--muted); }
 label.check { display: flex; align-items: center; gap: 6px; }
-label.check[hidden] { display: none; }
 input, select, button {
   font: inherit; color: var(--text); background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; min-height: 34px;
