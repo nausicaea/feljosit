@@ -246,7 +246,7 @@ def reports_page(
 
 
 SORTS = {"budget": "Budget order", "total": "Largest total", "change": "Largest increase"}
-UNCATEGORISED = "uncategorised"
+COUNTERPARTY_SORTS = {"total": "Largest total", "change": "Largest increase"}
 
 
 def _bucket_label(start: date, size: int) -> str:
@@ -270,8 +270,8 @@ def _heat(value: int, average: int) -> int:
 
 
 def _sorted_rows(
-    rows: tuple[reports.CategorySeries, ...], sort: str
-) -> list[reports.CategorySeries]:
+    rows: tuple[reports.SpendingSeries, ...], sort: str
+) -> list[reports.SpendingSeries]:
     if sort == "total":
         return sorted(rows, key=lambda r: r.total, reverse=True)
     if sort == "change":
@@ -299,27 +299,15 @@ def category_report_page(
         sort = "budget"
     data = reports.compare_categories(auth.db, auth.user.id, chosen.start, chosen.end)
 
-    selected: reports.CategorySeries | None = None
-    if category == UNCATEGORISED:
-        selected = next((r for r in data.rows if r.category_id is None), None)
-    elif category.isdigit():
-        selected = next((r for r in data.rows if r.category_id == int(category)), None)
+    selected = next((r for r in data.rows if category and r.key == category), None)
     detail: dict[str, object] | None = None
     if selected is not None:
-        label_step, label_offset = _month_labels(list(data.months))
         detail = {
             "row": selected,
-            "chart": charts.grouped_bars(
-                [month_short(m) for m in data.months],
-                [("bar-expense", list(selected.monthly))],
-                _axis_formatter(currency),
-                label_step,
-                label_offset,
-            ),
+            "chart": _month_chart(data.months, selected.monthly, currency),
             "counterparties": reports.top_counterparties(
                 auth.db, auth.user.id, selected.category_id, chosen.start, chosen.end
             ),
-            "key": UNCATEGORISED if selected.category_id is None else str(selected.category_id),
         }
     return render(
         request,
@@ -334,6 +322,65 @@ def category_report_page(
         heat=_heat,
         keep={"sort": sort} | ({"category": category} if detail else {}),
         detail=detail,
-        category_key=lambda r: UNCATEGORISED if r.category_id is None else str(r.category_id),
+        status_code=400 if chosen.error else 200,
+    )
+
+
+def _month_chart(months: tuple[date, ...], monthly: tuple[int, ...], currency: str) -> charts.Chart:
+    label_step, label_offset = _month_labels(list(months))
+    return charts.grouped_bars(
+        [month_short(m) for m in months],
+        [("bar-expense", list(monthly))],
+        _axis_formatter(currency),
+        label_step,
+        label_offset,
+    )
+
+
+@router.get("/reports/counterparties", response_class=HTMLResponse)
+def counterparty_report_page(
+    request: Request,
+    auth: CurrentAuth,
+    settings: AppSettings,
+    period: PeriodQuery = DEFAULT_PERIOD,
+    date_from: DateFrom = None,
+    date_to: DateTo = None,
+    sort: Annotated[str, Query(max_length=10)] = "total",
+    counterparty: Annotated[str, Query(max_length=140)] = "",
+) -> Response:
+    chosen = resolve_period(auth, period, date_from, date_to)
+    if sort not in COUNTERPARTY_SORTS:
+        sort = "total"
+    data = reports.compare_counterparties(auth.db, auth.user.id, chosen.start, chosen.end)
+    detail: dict[str, object] | None = None
+    if counterparty:
+        # The table shows only the largest counterparties. A link from a different
+        # page can select any counterparty.
+        selected = next((r for r in data.rows if r.key == counterparty), None) or (
+            reports.counterparty_series(
+                auth.db, auth.user.id, counterparty, chosen.start, chosen.end
+            )
+        )
+        if selected is not None:
+            detail = {
+                "row": selected,
+                "chart": _month_chart(data.months, selected.monthly, settings.budget_currency),
+                "categories": reports.counterparty_categories(
+                    auth.db, auth.user.id, counterparty, chosen.start, chosen.end
+                ),
+            }
+    return render(
+        request,
+        "report_counterparties.html",
+        auth,
+        **chosen.template_context(),
+        data=data,
+        rows=_sorted_rows(data.rows, sort),
+        sort=sort,
+        sorts=COUNTERPARTY_SORTS,
+        bucket_labels=[_bucket_label(b, data.bucket_months) for b in data.buckets],
+        heat=_heat,
+        detail=detail,
+        keep={"sort": sort} | ({"counterparty": counterparty} if detail else {}),
         status_code=400 if chosen.error else 200,
     )

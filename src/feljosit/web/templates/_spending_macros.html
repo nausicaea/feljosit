@@ -1,0 +1,83 @@
+{# Macros for the spending comparison tables (categories and counterparties).
+   Import them "with context": they use data, detail and heat of the page. #}
+
+{% macro change(row) -%}
+{%- if row.change_percent is none -%}—
+{%- else -%}{%- set pct = row.change_percent | round | int -%}<span class="change {{ 'up' if pct >= 10 else ('down' if pct <= -10 else '') }}">{{ '%+d %%' % pct if pct else '0 %' }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{# One row. href: the link of the name (none: no link). subtitle: a small second line. #}
+{% macro spending_row(row, href=none, subtitle='') %}
+<tr class="{{ 'selected' if detail and detail.row is sameas row }}">
+  <th scope="row">{% if href %}<a href="{{ href }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}{% if subtitle %}<div class="small">{{ subtitle }}</div>{% endif %}</th>
+  <td class="num strong">{{ row.total | money }}</td>
+  <td class="num">{{ '%.1f %%' % row.share }}</td>
+  <td class="num">{{ row.average_per_month | money }}</td>
+  {% if data.has_trend %}
+  <td class="num">{{ row.recent_average | money }}</td>
+  <td class="num">{{ change(row) }}</td>
+  {% endif %}
+  {% for v in row.values %}<td class="num heat-{{ heat(v, row.average_per_month) }}{{ ' first-bucket' if loop.first }}">{{ v | money }}</td>{% endfor %}
+</tr>
+{% endmacro %}
+
+{% macro table_head(first_column) %}
+<thead>
+  <tr>
+    <th scope="col">{{ first_column }}</th>
+    <th scope="col" class="num">Total</th>
+    <th scope="col" class="num">Share</th>
+    <th scope="col" class="num">Per month</th>
+    {% if data.has_trend %}
+    <th scope="col" class="num" title="Average per month of the last 3 months">Last 3 months</th>
+    <th scope="col" class="num">Change</th>
+    {% endif %}
+    {% for label in bucket_labels %}<th scope="col" class="num{{ ' first-bucket' if loop.first }}">{{ label }}</th>{% endfor %}
+  </tr>
+</thead>
+{% endmacro %}
+
+{% macro table_foot() %}
+<tfoot>
+  <tr>
+    <th scope="row">Total</th>
+    <td class="num">{{ data.total | money }}</td>
+    <td></td>
+    <td class="num">{{ (data.total / data.months | length) | round | int | money }}</td>
+    {% if data.has_trend %}<td colspan="2"></td>{% endif %}
+    {% for v in data.totals %}<td class="num{{ ' first-bucket' if loop.first }}">{{ v | money }}</td>{% endfor %}
+  </tr>
+</tfoot>
+{% endmacro %}
+
+{# The explanation above the table. #}
+{% macro table_hint(what) %}
+<p class="hint">
+  {% if data.bucket_months == 1 %}The columns on the right show the spending of each month.
+  {% else %}The columns on the right show the average spending per month in each {{ 'quarter' if data.bucket_months == 3 else 'year' }}. Thus a {{ 'quarter' if data.bucket_months == 3 else 'year' }} that is only partly in the period is comparable with the others.{% endif %}
+  A colour shows that the spending is more than the average per month of the {{ what }}: light for 10 % more, dark for 100 % more.
+  {% if data.has_trend %}"Change" compares the average of the last 3 months with the average of the months before. An increase of 10 % or more is red.{% endif %}
+  Click a {{ what }} to see the months and the details.
+</p>
+{% endmacro %}
+
+{# The figures at the top of the detail section. #}
+{% macro detail_facts(row) %}
+<dl class="facts">
+  <div><dt>Total</dt><dd>{{ row.total | money }}</dd></div>
+  <div><dt>Average per month</dt><dd>{{ row.average_per_month | money }}</dd></div>
+  <div><dt>Highest month</dt><dd>{{ row.monthly | max | money }}</dd></div>
+  {% if data.has_trend %}
+  <div><dt>Last 3 months, per month</dt><dd>{{ row.recent_average | money }}</dd></div>
+  <div><dt>Change</dt><dd>{{ change(row) }}</dd></div>
+  {% endif %}
+</dl>
+{% endmacro %}
+
+{# The sort order tabs. #}
+{% macro sort_tabs(base) %}
+<nav class="tabs" aria-label="Sort order">
+  {% for s, label in sorts.items() %}{% if s != 'change' or data.has_trend %}<a href="{{ base }}?{{ dict(sort=s, **period_query) | urlencode }}" {% if s == sort %}aria-current="page"{% endif %}>{{ label }}</a>{% endif %}{% endfor %}
+</nav>
+{% endmacro %}

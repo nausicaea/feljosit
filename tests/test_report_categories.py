@@ -195,3 +195,90 @@ def test_category_report_page(client: tuple[TestClient, str], app: FastAPI) -> N
     # The report tabs keep the period.
     overview = http.get("/reports?period=24m")
     assert 'href="/reports/categories?period=24m"' in overview.text
+
+
+# Spending by counterparty.
+
+
+def test_compare_counterparties(db: Session, user: User) -> None:
+    account, cats = _setup(db, user)
+    groceries, eating_out = cats["Groceries"], cats["Eating out"]
+    start = date(2026, 1, 1)
+    for i in range(6):
+        month = add_months(start, i)
+        _spend(db, account, month.replace(day=3), -20000, groceries, "Migros")
+        _spend(db, account, month.replace(day=4), -10000 if i < 3 else -15000, groceries, "Coop")
+        _spend(db, account, month.replace(day=5), -1000, eating_out, "Coop")  # The Coop café.
+        _spend(db, account, month.replace(day=6), -500, eating_out, f"Kiosk {i}")
+    _spend(db, account, date(2026, 2, 10), 3000, groceries, "Migros")  # A refund.
+    _spend(db, account, date(2026, 3, 1), -4000, None, "")  # No counterparty.
+    _spend(db, account, date(2026, 3, 2), 500000, cats["Salary"], "Muster AG")  # Income.
+
+    end = date(2026, 6, 30)
+    data = reports.compare_counterparties(db, user.id, start, end, limit=3)
+    assert [r.name for r in data.rows] == ["Migros", "Coop", reports.NO_COUNTERPARTY]
+    migros, coop, nobody = data.rows
+    assert migros.total == 6 * 20000 - 3000
+    assert migros.group == "Groceries"
+    assert coop.group == "Groceries and 1 more"
+    assert coop.monthly == (11000, 11000, 11000, 16000, 16000, 16000)
+    assert coop.change_percent == pytest.approx(16000 / 11000 * 100 - 100)
+    assert nobody.key is None  # Cannot be selected.
+    # The six kiosks are one row.
+    assert data.other is not None
+    assert data.other.name == "Other counterparties (6)"
+    assert data.other.total == 3000
+    # The total is the same as in the category comparison.
+    categories = reports.compare_categories(db, user.id, start, end)
+    assert data.total == categories.total
+    assert data.totals == categories.totals
+    assert sum(r.share for r in (*data.rows, data.other)) == pytest.approx(100.0)
+
+
+def test_counterparty_series_and_categories(db: Session, user: User) -> None:
+    account, cats = _setup(db, user)
+    for i in range(3):
+        month = add_months(date(2026, 1, 1), i)
+        _spend(db, account, month, -20000, cats["Groceries"], "Coop")
+        _spend(db, account, month, -1000, cats["Eating out"], "Coop")
+        _spend(db, account, month, -9000, cats["Groceries"], "Migros")
+    start, end = date(2026, 1, 1), date(2026, 3, 31)
+    series = reports.counterparty_series(db, user.id, "Coop", start, end)
+    assert series is not None
+    assert series.monthly == (21000, 21000, 21000)
+    assert series.share == pytest.approx(70.0)
+    assert reports.counterparty_series(db, user.id, "Nobody", start, end) is None
+    result = reports.counterparty_categories(db, user.id, "Coop", start, end)
+    assert [(c.name, c.count, c.total) for c in result] == [
+        ("Groceries", 3, 60000),
+        ("Eating out", 3, 3000),
+    ]
+
+
+def test_counterparty_report_page(client: tuple[TestClient, str], app: FastAPI) -> None:
+    http, _ = client
+    db = app.state.session_factory()
+    user = db.scalar(select(User).where(User.username == "anna"))
+    assert user is not None
+    account, cats = _setup(db, user)
+    today = date.today().replace(day=1)
+    for i in range(6):
+        _spend(db, account, add_months(today, -i), -12345, cats["Groceries"], "Migros & Co")
+    db.commit()
+    db.close()
+
+    page = http.get("/reports/counterparties?period=6m")
+    assert page.status_code == 200
+    assert "Migros &amp; Co" in page.text and "123.45" in page.text
+    # The name is encoded in the link.
+    assert "counterparty=Migros+%26+Co" in page.text
+    detail = http.get("/reports/counterparties?period=6m&counterparty=Migros+%26+Co")
+    assert 'id="detail"' in detail.text and "Groceries" in detail.text
+    # An unknown counterparty or sort order does not cause an error.
+    assert http.get("/reports/counterparties?counterparty=Nobody&sort=x").status_code == 200
+    too_long = http.get("/reports/counterparties?counterparty=" + "x" * 141)
+    assert too_long.status_code == 422
+    # The category details link to the counterparty details.
+    category = http.get(f"/reports/categories?period=6m&category={cats['Groceries']}")
+    assert "/reports/counterparties?counterparty=Migros+%26+Co" in category.text
+    assert 'href="/reports/counterparties?period=6m"' in category.text

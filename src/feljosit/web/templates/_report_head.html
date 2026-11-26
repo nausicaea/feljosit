@@ -9,6 +9,7 @@
 <nav class="tabs report-tabs" aria-label="Report">
   <a href="/reports?{{ period_query | urlencode }}" {% if base == '/reports' %}aria-current="page"{% endif %}>Overview</a>
   <a href="/reports/categories?{{ period_query | urlencode }}" {% if base == '/reports/categories' %}aria-current="page"{% endif %}>Spending by category</a>
+  <a href="/reports/counterparties?{{ period_query | urlencode }}" {% if base == '/reports/counterparties' %}aria-current="page"{% endif %}>Spending by counterparty</a>
 </nav>
 <form method="get" action="{{ base }}" class="filters" aria-label="Custom period">
   {% for k, v in keep.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
