@@ -24,8 +24,9 @@ A summary:
 - The XML parser refuses DTDs and entities (XXE and "billion laughs" protection).
 - The XML parser limits the number of elements, the nesting depth and the attributes.
 - Amounts in a statement must have a strict decimal syntax. Error messages do not show values from the file.
-- ZIP files and uploads have size limits. Only one import runs at a time.
-- The database file has mode `0600`.
+- ZIP files and uploads have size limits. The requests use the database one after the other.
+- The database file has mode `0600` (Linux and macOS).
+- The first user can be added in the browser only from the same computer, and only while the database has no user (ADR-0019).
 
 ## Recommendations for operators
 
@@ -35,4 +36,4 @@ A summary:
    Then set `FELJOSIT_SECURE_COOKIES=true` and `FELJOSIT_ALLOWED_HOSTS`.
 4. Encrypt the backups.
 5. Update the application regularly.
-6. Use a Python with libexpat 2.7.2 or later. The application writes a warning if the version is older.
+6. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.

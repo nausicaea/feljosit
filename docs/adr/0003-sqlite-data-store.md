@@ -1,6 +1,6 @@
 # ADR-0003: Use SQLite as the data store
 
-- Status: Accepted
+- Status: Accepted (Alembic is superseded by ADR-0018)
 - Date: 2026-11-25
 
 ## Context

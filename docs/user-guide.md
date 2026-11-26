@@ -11,6 +11,17 @@ Feljosit uses the envelope method. You give each franc a job:
 
 Your goal: "Ready to Assign" is 0.00, and no category has a negative "Available" amount.
 
+## Procedure: first start
+
+1. Start the Feljosit file (see the README). The browser opens.
+2. Type a username, for example `anna`.
+3. Type a password two times. Use 12 or more characters.
+4. Click "Add the user".
+
+The browser shows the accounts page. Only the first user can be added in the
+browser. To add more users, use the command `feljosit create-user NAME` in a
+terminal.
+
 ## Procedure: add your accounts
 
 1. Click "Accounts".
@@ -372,7 +383,8 @@ All your other sessions close.
 ## Procedure: reset a forgotten password
 
 1. Open a terminal on the computer with the database.
-2. Type `uv run feljosit set-password USERNAME`.
-3. Type the new password two times.
+2. Go to the folder of the Feljosit file.
+3. Type `./feljosit set-password USERNAME` (on Windows: `feljosit.exe set-password USERNAME`). Use the name of your Feljosit file.
+4. Type the new password two times.
 
 This command also unlocks a locked account.

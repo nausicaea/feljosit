@@ -1,6 +1,6 @@
 # ADR-0011: Use conventional commits, CI and Renovate
 
-- Status: Accepted. The Renovate part is superseded by ADR-0012.
+- Status: Accepted. The Renovate part is superseded by ADR-0012. The Python tools are superseded by ADR-0018.
 - Date: 2026-11-25
 
 ## Context

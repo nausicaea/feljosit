@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <title>{% block title %}Feljosit{% endblock %} · Feljosit</title>
+  <link rel="stylesheet" href="/static/app.css?v={{ version }}">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <script src="/static/app.js?v={{ version }}" defer></script>
+</head>
+<body>
+{% if auth %}
+<header class="topbar">
+  <a class="brand" href="/budget">Feljosit</a>
+  <nav aria-label="Main">
+    {% set path = request_path %}
+    <a href="/budget" {% if path.startswith('/budget') %}aria-current="page"{% endif %}>Budget</a>
+    <a href="/accounts" {% if path.startswith('/accounts') %}aria-current="page"{% endif %}>Accounts</a>
+    <a href="/transactions" {% if path.startswith('/transactions') %}aria-current="page"{% endif %}>Transactions</a>
+    <a href="/import" {% if path.startswith('/import') %}aria-current="page"{% endif %}>Import</a>
+    <a href="/categories" {% if path.startswith('/categories') %}aria-current="page"{% endif %}>Categories</a>
+    <a href="/reports" {% if path.startswith('/reports') %}aria-current="page"{% endif %}>Reports</a>
+  </nav>
+  <div class="user">
+    <a href="/settings">{{ auth.user.username }}</a>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="link">Log out</button>
+    </form>
+  </div>
+</header>
+{% endif %}
+<main>
+  {% if flash %}
+  <p class="flash {{ 'error' if flash[1] else 'ok' }}" role="status">{{ flash[0] }}</p>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer>Feljosit {{ version }} · Your data stays on this computer.</footer>
+</body>
+</html>

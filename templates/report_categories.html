@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "macros.html" import bar_chart with context %}
+{% from "_spending_macros.html" import spending_row, table_head, table_foot, table_hint, detail_facts, sort_tabs with context %}
+{% block title %}Spending by category{% endblock %}
+{% macro category_row(row, show_group) -%}
+{{ spending_row(row, '/reports/categories?' ~ (dict(category=row.key, sort=sort) | merge(period_query) | urlencode) ~ '#detail', row.group if show_group and row.category_id is not none else '') }}
+{%- endmacro %}
+{% block content %}
+{% set base = '/reports/categories' %}
+{% include "_report_head.html" %}
+
+{% if not data.rows %}
+<section class="card"><p>No expenses in this period.</p></section>
+{% else %}
+<section class="card">
+  <div class="page-head">
+    <h2>Spending by category</h2>
+    {{ sort_tabs(base) }}
+  </div>
+  {{ table_hint('category') }}
+  <div class="table-scroll">
+  <table class="heat">
+    {{ table_head('Category') }}
+    {% if sort == 'budget' %}
+    {% for group in data.groups %}
+    <tbody{% if group.uncategorised %} class="uncategorised"{% endif %}>
+      {% if not group.uncategorised %}
+      <tr class="group-row">
+        <th scope="rowgroup">{{ group.name }}</th>
+        <td class="num">{{ group.total | money }}</td>
+        <td colspan="{{ 4 if data.has_trend else 2 }}"></td>
+        {% for v in group.values %}<td class="num{{ ' first-bucket' if loop.first }}">{{ v | money }}</td>{% endfor %}
+      </tr>
+      {% endif %}
+      {% for row in group.rows %}{{ category_row(row, false) }}{% endfor %}
+    </tbody>
+    {% endfor %}
+    {% else %}
+    <tbody>
+      {% for row in rows %}{{ category_row(row, true) }}{% endfor %}
+    </tbody>
+    {% endif %}
+    {{ table_foot() }}
+  </table>
+  </div>
+</section>
+
+{% if detail %}
+{% set row = detail.row %}
+<section class="card" id="detail">
+  <div class="page-head">
+    <h2>{{ row.name }}{% if row.category_id is not none %} <span class="small">({{ row.group }})</span>{% endif %}</h2>
+    <a href="{{ base }}?{{ dict(sort=sort) | merge(period_query) | urlencode }}">Close</a>
+  </div>
+  {{ detail_facts(row) }}
+  <h3>Spending per month</h3>
+  {{ bar_chart(detail.chart, 'Spending per month: ' ~ row.name) }}
+  <h3>Counterparties with the most spending</h3>
+  {% if detail.counterparties %}
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th scope="col">Counterparty</th><th scope="col" class="num">Transactions</th><th scope="col" class="num">Total</th><th scope="col" class="num">Per transaction</th><th scope="col" class="num">Share</th></tr></thead>
+    <tbody>
+    {% for c in detail.counterparties %}
+      <tr>
+        <td>{% if c.name != '—' %}<a href="/reports/counterparties?{{ dict(counterparty=c.name) | merge(period_query) | urlencode }}#detail">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</td>
+        <td class="num">{{ c.count }}</td>
+        <td class="num">{{ c.total | money }}</td>
+        <td class="num">{{ (c.total / c.count) | round | int | money }}</td>
+        <td class="num">{{ (c.total / row.total * 100)|pct(1) if row.total > 0 else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <p><a href="/transactions?{{ 'uncategorised=true' if row.category_id is none else 'category=' ~ row.category_id }}">Show all transactions of this category</a> (all dates).</p>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

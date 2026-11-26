@@ -1,18 +1,33 @@
 # Contributing
 
+Feljosit is written in Rust (see [ADR-0018](docs/adr/0018-one-executable-in-rust.md)).
+
 ## Procedure: prepare the development environment
 
-1. Install [uv](https://docs.astral.sh/uv/).
-2. Install the dependencies:
-
-   ```bash
-   uv sync
-   ```
-
+1. Install [rustup](https://rustup.rs/). The file `rust-toolchain.toml` gives the
+   Rust version. `rustup` installs it automatically at the first `cargo` command.
+2. On Linux, install a C compiler (for example `gcc`). The build compiles SQLite.
+   On macOS, install the Xcode command line tools. On Windows, install the
+   "Desktop development with C++" workload of the Visual Studio Build Tools.
 3. Install the Git hooks:
 
    ```bash
-   uv run --with pre-commit pre-commit install --hook-type pre-commit --hook-type commit-msg
+   pipx run pre-commit install --hook-type pre-commit --hook-type commit-msg
+   ```
+
+## Procedure: build and start
+
+1. Build the executable:
+
+   ```bash
+   cargo build --release
+   ```
+
+2. The file is `target/release/feljosit` (`feljosit.exe` on Windows).
+3. Start it with a separate data directory for the development:
+
+   ```bash
+   FELJOSIT_DATA_DIR=./data cargo run -- serve --open
    ```
 
 ## Procedure: do the checks before a pull request
@@ -20,28 +35,23 @@
 1. Format the code:
 
    ```bash
-   uv run ruff format .
+   cargo fmt --all
    ```
 
 2. Do the lint checks:
 
    ```bash
-   uv run ruff check .
+   cargo clippy --all-targets --locked -- -D warnings
    ```
 
-3. Do the type checks:
+3. Do the tests:
 
    ```bash
-   uv run mypy src tests
+   cargo test --locked
    ```
 
-4. Do the tests:
-
-   ```bash
-   uv run pytest --cov
-   ```
-
-CI does the same checks. It also does `pip-audit` and CodeQL.
+CI does the same checks on Linux, Windows and macOS. It also does
+`cargo audit` and CodeQL.
 
 ## Commit messages
 
@@ -51,28 +61,26 @@ Use [Conventional Commits](https://www.conventionalcommits.org/). Examples:
 - `fix(budget): roll over negative amounts correctly`
 - `docs(adr): add ADR-0012 for split transactions`
 
-You can use `uv run cz commit` to write the message.
+You can use `pipx run --spec commitizen cz commit` to write the message.
 
 ## Procedure: change the database schema
 
-1. Change `src/feljosit/models.py`.
-2. Make a migration:
+1. Add a file `migrations/NNNN_description.sql` with the next number.
+2. Add the file to the list `MIGRATIONS` in `src/db.rs`.
+3. Change the structures in `src/models.rs` and the queries.
+4. Do the tests. The application applies the new migration when it starts. The
+   table `alembic_version` keeps the number of the last migration.
 
-   ```bash
-   uv run python -c "from alembic import command; from sqlalchemy import create_engine; from feljosit.db import alembic_config, migrate; e = create_engine('sqlite:///tmp.sqlite3'); migrate(e); command.revision(alembic_config(e), message='describe the change', autogenerate=True)"
-   ```
-
-3. Delete `tmp.sqlite3`.
-4. Read the migration file and correct it if necessary.
-5. Do the tests. `tests/test_migrations.py` compares the migrations with the models.
+Do not change a migration that is in a release. The databases of the users
+already have it.
 
 ## Procedure: make a release
 
 1. Make sure that CI passes on `main`.
-2. Increase the version and update the changelog:
+2. Increase the version in `Cargo.toml` and `Cargo.lock` and update the changelog:
 
    ```bash
-   uv run cz bump
+   pipx run --spec commitizen==4.20.1 cz bump
    ```
 
 3. Push the commit and the tag:
@@ -81,6 +89,9 @@ You can use `uv run cz commit` to write the message.
    git push --follow-tags
    ```
 
+4. The workflow `release.yml` builds the executables for Windows, macOS and Linux.
+   It attaches them and the file `SHA256SUMS` to a GitHub release.
+
 ## Rules
 
 - Write an ADR for each important decision (see [docs/adr](docs/adr/README.md)).
@@ -88,3 +99,4 @@ You can use `uv run cz commit` to write the message.
 - Add tests for each change. Add a security test for each security control.
 - Do not add real bank data to the repository. Use synthetic test data.
 - Filter each database query by the user (`user_id`).
+- Use bound parameters (`?1`) in SQL. Do not put values from a request into SQL text.

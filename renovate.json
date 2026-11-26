@@ -10,6 +10,10 @@
   "timezone": "Europe/Zurich",
   "minimumReleaseAge": "7 days",
   "internalChecksFilter": "strict",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
   "vulnerabilityAlerts": {
     "enabled": true,
     "labels": ["security"],
@@ -19,14 +23,10 @@
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
-      "description": "Keep the Python version as a range. Do not pin it to one release.",
-      "matchDepTypes": ["requires-python"],
-      "rangeStrategy": "auto"
-    },
-    {
-      "description": "Group the development tools.",
-      "matchDepTypes": ["dependency-groups"],
-      "groupName": "development tools"
+      "description": "Group the development dependencies.",
+      "matchManagers": ["cargo"],
+      "matchDepTypes": ["dev-dependencies"],
+      "groupName": "development dependencies"
     },
     {
       "description": "Group the GitHub Actions.",
@@ -35,7 +35,8 @@
     },
     {
       "description": "Runtime dependencies: fix commits (they go into the release notes).",
-      "matchDepTypes": ["project.dependencies"],
+      "matchManagers": ["cargo"],
+      "matchDepTypes": ["dependencies"],
       "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     }

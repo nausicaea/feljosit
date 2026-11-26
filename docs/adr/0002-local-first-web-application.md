@@ -1,6 +1,6 @@
 # ADR-0002: Use a local-first web application in Python
 
-- Status: Accepted
+- Status: Accepted (the Python stack is superseded by ADR-0018)
 - Date: 2026-11-25
 
 ## Context

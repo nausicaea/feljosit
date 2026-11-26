@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf, amount with context %}
+{% block title %}Accounts{% endblock %}
+{% block content %}
+<h1>Accounts</h1>
+{% set ns = namespace(budget=0) %}
+<table>
+  <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">IBAN</th><th scope="col">Budget</th><th scope="col" class="num">Balance</th><th scope="col"></th></tr></thead>
+  <tbody>
+  {% for a in accounts %}
+    {% set bal = a.balance %}
+    {% if a.on_budget and not a.closed %}{% set ns.budget = ns.budget + bal %}{% endif %}
+    <tr class="{{ 'closed' if a.closed }}">
+      <td><a href="/transactions?account={{ a.id }}">{{ a.name }}</a>{% if a.closed %} (closed){% endif %}</td>
+      <td>{{ a.type_label }}</td>
+      <td class="mono">{{ a.iban | iban if a.iban else '—' }}</td>
+      <td>{{ 'Budget' if a.on_budget else 'Tracking' }}</td>
+      <td class="num">{{ a.currency }} {{ amount(bal, a.currency) }}</td>
+      <td class="nowrap">
+        <a href="/accounts/{{ a.id }}/edit">Edit</a> ·
+        <form method="post" action="/accounts/{{ a.id }}/close" class="inline">
+          {{ csrf() }}<input type="hidden" name="closed" value="{{ 'false' if a.closed else 'true' }}">
+          <button type="submit" class="link">{{ 'Open again' if a.closed else 'Close' }}</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">No accounts yet. Add an account below, or import a statement.</td></tr>
+  {% endfor %}
+  </tbody>
+  <tfoot><tr><th colspan="4">Total of open budget accounts</th><td class="num">{{ budget_currency }} {{ amount(ns.budget) }}</td><td></td></tr></tfoot>
+</table>
+
+<section class="card">
+  <h2>Add an account</h2>
+  <form method="post" action="/accounts" class="grid-form">
+    {{ csrf() }}
+    <label>Name <input name="name" required maxlength="100" placeholder="UBS private account"></label>
+    <label>Type
+      <select name="account_type">
+        {% for t in account_types %}<option value="{{ t.value }}">{{ t.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Budget or tracking
+      <select name="budget_mode">
+        <option value="default">Automatic (from the type)</option>
+        <option value="budget">Budget account</option>
+        <option value="tracking">Tracking account</option>
+      </select>
+    </label>
+    <label>Currency <input name="currency" value="{{ budget_currency }}" maxlength="3" pattern="[A-Za-z]{3}" required></label>
+    <label>IBAN (optional) <input name="iban" maxlength="50" placeholder="CH93 0076 2011 6238 5295 7" class="mono"></label>
+    <label>Starting balance <input name="starting_balance" inputmode="decimal" placeholder="0.00"></label>
+    <label>Date of the starting balance <input name="starting_date" type="date" value="{{ today }}"></label>
+    <button type="submit">Add the account</button>
+  </form>
+  <p class="hint">Budget accounts (private, savings, credit card, cash) are part of the budget. Tracking accounts (pillar 3a, investments, loans) only show the balance. If you import a camt.053 statement, the IBAN connects the statement to the account. If no account has the IBAN, the import adds the account.</p>
+</section>
+{% endblock %}
