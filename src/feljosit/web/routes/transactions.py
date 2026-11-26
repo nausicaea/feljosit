@@ -12,9 +12,17 @@ from pydantic import BeforeValidator
 from sqlalchemy import func, or_, select
 
 from feljosit.iban import normalise_iban
-from feljosit.models import Account, CategoryGroup, Transaction, TransactionSource
+from feljosit.models import (
+    Account,
+    CategoryGroup,
+    Transaction,
+    TransactionSource,
+    TransferMethod,
+    TransferPair,
+    TransferStatus,
+)
 from feljosit.money import MoneyError, parse_user_amount
-from feljosit.services import accounts, categorise
+from feljosit.services import accounts, categorise, transfers
 from feljosit.services.errors import NotFoundError, ServiceError
 from feljosit.web.deps import CsrfAuth, CurrentAuth
 from feljosit.web.rendering import render
@@ -54,9 +62,14 @@ def transactions_page(
     uncategorised: Annotated[bool, Query()] = False,
     q: Annotated[str, Query(max_length=100)] = "",
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
+    matched: Annotated[bool, Query()] = False,
     iban: Annotated[bool, Query()] = False,
 ) -> Response:
-    """The transaction list. ``iban`` shows the account number of the counterparty."""
+    """The transaction list.
+
+    ``matched`` shows only the transfers found from matching. ``iban`` shows the
+    account number of the counterparty.
+    """
     filters = [Transaction.user_id == auth.user.id]
     if account is not None:
         filters.append(Transaction.account_id == account)
@@ -68,6 +81,18 @@ def transactions_page(
             Transaction.is_transfer.is_(False),
             Account.on_budget.is_(True),
         ]
+    if matched:
+        active_match = (
+            TransferPair.user_id == auth.user.id,
+            TransferPair.status == TransferStatus.ACTIVE,
+            TransferPair.method == TransferMethod.MATCH,
+        )
+        filters.append(
+            or_(
+                Transaction.id.in_(select(TransferPair.outflow_id).where(*active_match)),
+                Transaction.id.in_(select(TransferPair.inflow_id).where(*active_match)),
+            )
+        )
     if q.strip():
         pattern = f"%{_escape_like(q.strip())}%"
         conditions = [
@@ -106,6 +131,7 @@ def transactions_page(
             "category": category,
             "uncategorised": "true" if uncategorised else None,
             "q": q or None,
+            "matched": "true" if matched else None,
         }.items()
         if v is not None
     }
@@ -116,6 +142,7 @@ def transactions_page(
         "transactions.html",
         auth,
         transactions=items,
+        partners=transfers.partners(auth.db, items),
         total=total,
         page=page,
         pages=max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1),
@@ -129,13 +156,14 @@ def transactions_page(
         filter_account=account,
         filter_category=category,
         filter_uncategorised=uncategorised,
+        filter_matched=matched,
         q=q,
         today=date.today().isoformat(),
     )
 
 
 #: Query parameters that the transaction list accepts. A redirect keeps only these.
-_LIST_PARAMS = ("account", "category", "uncategorised", "q", "page", "iban")
+_LIST_PARAMS = ("account", "category", "uncategorised", "q", "page", "matched", "iban")
 
 
 def _back(return_to: str) -> RedirectResponse:
@@ -163,7 +191,15 @@ def set_category(
             tx.category_id = None
             tx.is_transfer = True
         else:
-            categorise.set_category(auth.db, tx, int(category_id) if category_id else None)
+            partner = categorise.set_category(
+                auth.db, tx, int(category_id) if category_id else None
+            )
+            if partner is not None:
+                auth.flash(
+                    f"This transaction and the transaction of {partner.booking_date:%d.%m.%Y} "
+                    f"on '{partner.account.name}' are not a transfer any more. "
+                    "Give a category to the other transaction too."
+                )
     except (ServiceError, ValueError) as exc:
         message = str(exc) if isinstance(exc, ServiceError) else "The category is not valid."
         auth.flash(message, error=True)
@@ -192,6 +228,7 @@ def delete_transaction(
     if tx.source is not TransactionSource.MANUAL:
         auth.flash("You can only delete transactions that you added manually.", error=True)
     else:
+        transfers.before_delete(auth.db, tx)
         auth.db.delete(tx)
         auth.flash("The transaction is deleted.")
     return _back(return_to)

@@ -12,6 +12,9 @@ The order of the methods:
    not regular expressions. This prevents ReDoS attacks.
 3. History. If the user categorised a transaction with the same counterparty IBAN
    or counterparty name before, the most recent category applies.
+
+Between 1 and 2, :mod:`feljosit.services.transfers` finds the transfers that have
+no IBAN: two matching transactions on two accounts.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from feljosit.models import (
     Transaction,
 )
 from feljosit.services.errors import NotFoundError, ServiceError
+from feljosit.services.transfers import match_transfers, reject_transfer
 
 
 @dataclass(frozen=True)
@@ -130,15 +134,20 @@ def owned_category(db: Session, user_id: int, category_id: int) -> Category:
     return category
 
 
-def set_category(db: Session, tx: Transaction, category_id: int | None) -> None:
-    if category_id is None:
-        tx.category_id = None
-        return
-    owned_category(db, tx.user_id, category_id)
-    if not tx.account.on_budget:
-        raise ServiceError("Transactions in tracking accounts have no category.")
+def set_category(db: Session, tx: Transaction, category_id: int | None) -> Transaction | None:
+    """Set the category of a transaction (``None``: uncategorised).
+
+    If the transaction is a transfer, it stops being a transfer. If it is in a
+    transfer pair, the other transaction of the pair stops being a transfer too (see
+    :func:`feljosit.services.transfers.reject_transfer`). Return that transaction.
+    """
+    if category_id is not None:
+        owned_category(db, tx.user_id, category_id)
+        if not tx.account.on_budget:
+            raise ServiceError("Transactions in tracking accounts have no category.")
+    partner = reject_transfer(db, tx) if tx.is_transfer else None
     tx.category_id = category_id
-    tx.is_transfer = False
+    return partner
 
 
 def _checked_rule_values(
@@ -211,7 +220,12 @@ def update_rule(
 
 
 def apply_to_uncategorised(db: Session, user_id: int) -> int:
-    """Apply the rules and the history to all uncategorised transactions in the budget."""
+    """Find transfers and apply the rules and the history to the uncategorised transactions.
+
+    The matching of transfers (:mod:`feljosit.services.transfers`) applies first, to
+    all dates. Return the number of changed transactions.
+    """
+    matched = 2 * len(match_transfers(db, user_id))
     categoriser = Categoriser(db, user_id)
     txs: Iterable[Transaction] = db.scalars(
         select(Transaction)
@@ -234,4 +248,4 @@ def apply_to_uncategorised(db: Session, user_id: int) -> int:
         if suggestion is not None:
             tx.category_id = suggestion
             changed += 1
-    return changed
+    return matched + changed
