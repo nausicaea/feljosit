@@ -11,10 +11,21 @@
     </select>
   </label>
   <label>Search <input name="q" value="{{ q }}" maxlength="100" type="search"></label>
-  <label class="check"><input type="checkbox" name="uncategorised" value="true" {% if filter_uncategorised %}checked{% endif %} data-autosubmit-change> Only uncategorised</label>
-  <label class="check"><input type="checkbox" name="matched" value="true" {% if filter_matched %}checked{% endif %} data-autosubmit-change> Only matched transfers</label>
+  <label>Category
+    <select name="category" data-autosubmit-change>
+      <option value="">All categories</option>
+      <option value="uncategorised" {% if filter_category == 'uncategorised' %}selected{% endif %}>{{ category_filters.uncategorised }}</option>
+      <optgroup label="⇄ Transfers">
+        {% for value in ['transfers', 'matched', 'unmatched'] %}<option value="{{ value }}" {% if filter_category == value %}selected{% endif %}>{{ category_filters[value] }}</option>{% endfor %}
+      </optgroup>
+      {% for g in groups %}
+      <optgroup label="{{ g.name }}">
+        {% for c in g.categories %}<option value="{{ c.id }}" {% if filter_category == c.id | string %}selected{% endif %}>{{ c.name }}{% if c.hidden %} (hidden){% endif %}</option>{% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </label>
   <label class="check"><input type="checkbox" name="iban" value="true" {% if show_iban %}checked{% endif %} data-autosubmit-change> Show account numbers</label>
-  {% if filter_category %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
   <button type="submit">Filter</button>
   {% if filters_active %}<a href="/transactions{{ '?' ~ display_query if display_query }}">Remove the filters</a>{% endif %}
 </form>

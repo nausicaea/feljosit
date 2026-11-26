@@ -97,7 +97,7 @@ Import the older statements too.
 
 CAUTION: Two unrelated transactions with the same amount can become a wrong
 transfer. Check the matched transfers: in the import result, click "check them",
-or select "Only matched transfers" on the transactions page.
+or select the category "Transfers found from the amount" on the transactions page.
 
 For a transfer with a known partner, the transactions page shows the other
 account and the date below the category (⇄). If a transfer is wrong, select the
@@ -108,12 +108,32 @@ to the other transaction too.
 ## Procedure: categorise transactions
 
 1. Click "Transactions".
-2. Select "Only uncategorised".
+2. In "Category", select "— Uncategorised —".
 3. For each transaction, select a category. The change is saved at once.
 
 For a transfer between your accounts, select "Transfer". A transfer from a budget
 account to a tracking account (for example to pillar 3a) needs a category,
 because the money leaves the budget.
+
+## Procedure: filter the transactions
+
+1. Click "Transactions".
+2. Select an account, a category, or both. Or type a text in "Search" and click
+   "Filter".
+
+The list "Category" has these choices, in addition to each category:
+
+- "— Uncategorised —": transactions of budget accounts without a category and
+  without a transfer.
+- "All transfers": all transfers between your accounts.
+- "Transfers found from the amount": the transfers that the application found
+  from two matching transactions. Check these transfers after an import.
+- "Unmatched transfers (no partner)": transfers without a known partner. For
+  example, only one side is imported, you selected "Transfer" manually, or the
+  transfer is older than the transfer pairs. Check that each of them is a
+  transfer.
+
+To check the transfers of one account, select the account and "All transfers".
 
 ## Procedure: show the account number of the counterparty
 
