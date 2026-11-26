@@ -119,6 +119,7 @@ class MatchType(enum.StrEnum):
 
 class TransactionSource(enum.StrEnum):
     CAMT053 = "camt053"
+    CARD_CSV = "card_csv"
     MANUAL = "manual"
     STARTING_BALANCE = "starting_balance"
 
