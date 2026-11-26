@@ -183,6 +183,9 @@ def test_full_flow_import_categorise_budget_reports(client: Client, app: FastAPI
     assert response.status_code == 400
     assert "on or before the end date" in response.text
     assert http.get("/reports?from=&to=").status_code == 200
+    response = http.get("/reports?period=all")
+    assert response.status_code == 200
+    assert 'href="/reports?period=all" aria-current="page"' in response.text
     assert http.get("/reports?from=abc").status_code == 422
     assert "Muster AG" in http.get("/transactions?q=muster").text
 

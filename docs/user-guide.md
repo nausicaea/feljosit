@@ -98,6 +98,7 @@ a different category, or the next month has less money to assign.
 Click "Reports". Select the period:
 
 - Click a preset period (3, 6, 12 or 24 months). A preset period includes the current month.
+- Or, click "All". The period starts in the month of your first transaction and includes the current month. If your transactions are more than 20 years old, the page shows only the last 20 years.
 - Or, type the dates in "From" and "To" and click "Show". The two dates are included. The maximum period is 20 years.
 
 The page shows:

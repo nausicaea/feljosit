@@ -19,6 +19,10 @@ from feljosit.web.rendering import month_short, render
 router = APIRouter()
 
 PERIODS = {"3m": 3, "6m": 6, "12m": 12, "24m": 24}
+ALL_PERIOD = "all"
+"""The period from the month of the first transaction to the current month."""
+PERIOD_LABELS = {"3m": "3 months", "6m": "6 months", "12m": "12 months", "24m": "24 months"}
+PERIOD_LABELS[ALL_PERIOD] = "All"
 DEFAULT_PERIOD = "12m"
 MAX_MONTHS = 240
 """The maximum length of a custom period (20 years). This limits the size of the charts."""
@@ -44,6 +48,25 @@ def _preset_range(period: str, today: date) -> tuple[date, date]:
     months = PERIODS.get(period, PERIODS[DEFAULT_PERIOD])
     end_month = month_start(today)
     return add_months(end_month, -(months - 1)), _last_day_of_month(end_month)
+
+
+def all_range(data_range: tuple[date, date] | None, today: date) -> tuple[date, date, bool]:
+    """The range of the "All" period and ``True`` if the range was made shorter.
+
+    The range starts in the month of the first transaction. It stops at the end of the
+    current month, or at the end of the month of the last transaction if that is later.
+    If the range is longer than ``MAX_MONTHS``, only the last ``MAX_MONTHS`` months are
+    used. If there are no transactions, the range is the current month.
+    """
+    end_month = month_start(today)
+    if data_range is None:
+        return end_month, _last_day_of_month(end_month), False
+    first, last = data_range
+    end_month = max(end_month, month_start(min(last, MAX_DATE)))
+    start = max(month_start(first), month_start(MIN_DATE))
+    earliest = add_months(end_month, -(MAX_MONTHS - 1))
+    shortened = start < earliest
+    return max(start, earliest), _last_day_of_month(end_month), shortened
 
 
 def custom_range(start: date | None, end: date | None, today: date) -> tuple[date, date]:
@@ -90,7 +113,8 @@ def reports_page(
     today = date.today()
     error: str | None = None
     custom = date_from is not None or date_to is not None
-    if period not in PERIODS:
+    shortened = False
+    if period not in PERIOD_LABELS:
         period = DEFAULT_PERIOD
     if custom:
         try:
@@ -98,7 +122,10 @@ def reports_page(
         except ValueError as exc:
             error = str(exc)
             custom = False
-    if not custom:
+    if not custom and period == ALL_PERIOD:
+        data_range = reports.transaction_date_range(auth.db, auth.user.id)
+        start, end, shortened = all_range(data_range, today)
+    elif not custom:
         start, end = _preset_range(period, today)
     currency = settings.budget_currency
 
@@ -132,7 +159,9 @@ def reports_page(
         "reports.html",
         auth,
         period=None if custom else period,
-        periods=list(PERIODS),
+        periods=PERIOD_LABELS,
+        shortened=shortened,
+        max_years=MAX_MONTHS // 12,
         custom=custom,
         error=error,
         form_from=date_from.isoformat() if date_from else start.isoformat(),

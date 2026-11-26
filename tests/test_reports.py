@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from feljosit.models import AccountType, Category, User
 from feljosit.services import accounts, reports
 from feljosit.web import charts
-from feljosit.web.routes.reports import custom_range
+from feljosit.web.routes.reports import all_range, custom_range
 
 
 def test_flows_spending_and_net_worth(db: Session, user: User) -> None:
@@ -105,3 +105,32 @@ def test_flows_with_partial_months(db: Session, user: User) -> None:
     ]
     worth = reports.net_worth(db, user.id, date(2026, 1, 10), date(2026, 2, 20))
     assert [v for _, v in worth["CHF"]] == [-300, -300]
+
+
+def test_all_range(db: Session, user: User) -> None:
+    today = date(2026, 11, 26)
+    assert reports.transaction_date_range(db, user.id) is None
+    assert all_range(None, today) == (date(2026, 11, 1), date(2026, 11, 30), False)
+    account = accounts.create_account(
+        db,
+        user.id,
+        name="Private",
+        account_type=AccountType.CHECKING,
+        currency="CHF",
+        budget_currency="CHF",
+    )
+    for on in [date(2024, 3, 15), date(2025, 6, 1)]:
+        accounts.add_manual_transaction(
+            db, account, booking_date=on, amount_minor=-100, counterparty="x", category_id=None
+        )
+    data_range = reports.transaction_date_range(db, user.id)
+    assert data_range == (date(2024, 3, 15), date(2025, 6, 1))
+    assert all_range(data_range, today) == (date(2024, 3, 1), date(2026, 11, 30), False)
+    # A transaction after the current month extends the range.
+    assert all_range((date(2024, 3, 15), date(2027, 2, 3)), today)[1] == date(2027, 2, 28)
+    # More than 20 years: only the last 20 years.
+    assert all_range((date(1990, 1, 1), today), today) == (
+        date(2006, 12, 1),
+        date(2026, 11, 30),
+        True,
+    )
