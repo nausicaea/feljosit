@@ -1,3 +1,5 @@
+import io
+import zipfile
 from datetime import date
 
 import pytest
@@ -89,6 +91,84 @@ def test_import_refuses_account_of_other_user(db: Session, user: User) -> None:
     other_account = _account(db, other)
     with pytest.raises(NotFoundError):
         _import(db, user, "camt053_v04_private.xml", other_account)
+
+
+def _zip(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+def _two_accounts_zip() -> bytes:
+    return _zip(
+        {
+            "private.xml": fixture_bytes("camt053_v04_private.xml"),
+            "savings.xml": fixture_bytes("camt053_v08_savings.xml"),
+        }
+    )
+
+
+def _two_statements_xml() -> bytes:
+    """One XML file with two statements: the savings statement and a copy for PRIVATE_IBAN."""
+    text = fixture_bytes("camt053_v08_savings.xml").decode()
+    start = text.index("<Stmt>")
+    end = text.index("</Stmt>") + len("</Stmt>")
+    copy = (
+        text[start:end]
+        .replace("<Id>SAV-2026-10</Id>", "<Id>PRIV-2026-10</Id>", 1)
+        .replace(f"<IBAN>{SAVINGS_IBAN}</IBAN></Id>", f"<IBAN>{PRIVATE_IBAN}</IBAN></Id>", 1)
+    )
+    return (text[:end] + copy + text[end:]).encode()
+
+
+def _transaction_count(db: Session, account_id: int) -> int:
+    return len(list(db.scalars(select(Transaction).where(Transaction.account_id == account_id))))
+
+
+def test_import_zip_with_two_accounts(db: Session, user: User) -> None:
+    private_id = _account(db, user)
+    savings_id = _account(
+        db, user, iban=SAVINGS_IBAN, name="Savings", account_type=AccountType.SAVINGS
+    )
+    result = import_statement_file(db, user.id, filename="both.zip", data=_two_accounts_zip())
+    private, savings = result.statements
+    assert (private.account_id, private.new_count) == (private_id, 7)
+    assert (savings.account_id, savings.new_count) == (savings_id, 2)
+    assert private.balance_matches is True
+    assert savings.balance_matches is True
+    # The transfer between the two accounts is found in the same import.
+    assert private.transfer_count == 1
+    assert savings.transfer_count == 1
+    balances = accounts.balances(db, user.id)
+    assert balances[private_id] == 425005
+    assert balances[savings_id] == 1050250
+    assert result.new_count == 9
+
+
+def test_import_one_xml_with_two_accounts(db: Session, user: User) -> None:
+    private_id = _account(db, user)
+    savings_id = _account(
+        db, user, iban=SAVINGS_IBAN, name="Savings", account_type=AccountType.SAVINGS
+    )
+    result = import_statement_file(db, user.id, filename="both.xml", data=_two_statements_xml())
+    assert [(s.account_id, s.statement_id, s.new_count) for s in result.statements] == [
+        (savings_id, "SAV-2026-10", 2),
+        (private_id, "PRIV-2026-10", 2),
+    ]
+    assert all(s.balance_matches for s in result.statements)
+    assert _transaction_count(db, private_id) == 3  # Starting balance and 2 entries.
+    assert _transaction_count(db, savings_id) == 3
+
+
+def test_import_with_two_accounts_refuses_selected_account(db: Session, user: User) -> None:
+    private_id = _account(db, user)
+    _account(db, user, iban=SAVINGS_IBAN, name="Savings", account_type=AccountType.SAVINGS)
+    with pytest.raises(ServiceError, match="different account"):
+        import_statement_file(
+            db, user.id, filename="both.zip", data=_two_accounts_zip(), account_id=private_id
+        )
 
 
 def test_transfers_between_budget_accounts(db: Session, user: User) -> None:
