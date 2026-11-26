@@ -134,3 +134,27 @@ def test_all_range(db: Session, user: User) -> None:
         date(2026, 11, 30),
         True,
     )
+
+
+@pytest.mark.parametrize(
+    ("count", "step"),
+    [(1, 1), (12, 1), (13, 2), (24, 2), (25, 3), (36, 3), (37, 6), (72, 6), (73, 12), (240, 24)],
+)
+def test_month_label_step(count: int, step: int) -> None:
+    assert charts.month_label_step(count) == step
+
+
+def test_x_labels_are_thinned_on_calendar_boundaries() -> None:
+    # 31 months from June 2024 to December 2026: one label for each quarter.
+    months = [f"m{i}" for i in range(31)]
+    offset = 2024 * 12 + 5
+    step = charts.month_label_step(len(months))
+    assert step == 3
+    bars = charts.grouped_bars(months, [("x", list(range(31)))], str, step, offset)
+    assert [label.label for label in bars.x_labels] == [f"m{i}" for i in range(1, 31, 3)]
+    assert len(bars.bars) == 31  # All bars stay.
+    line = charts.line(months, list(range(31)), str, step, offset)
+    assert [label.label for label in line.x_labels] == [f"m{i}" for i in range(1, 31, 3)]
+    assert len(line.line_dots) == 31
+    for chart in (bars, line):
+        assert len(chart.x_labels) <= charts.MAX_X_LABELS
