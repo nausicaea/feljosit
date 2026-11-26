@@ -1,6 +1,6 @@
 # ADR-0018: Make Feljosit one executable file in Rust
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-26
 - Supersedes: the stack of ADR-0002, ADR-0013, the parser library of ADR-0005 and ADR-0014
 - Related: ADR-0003, ADR-0007, ADR-0012

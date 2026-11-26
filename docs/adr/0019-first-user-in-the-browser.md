@@ -1,6 +1,6 @@
 # ADR-0019: Add the first user in the browser
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-26
 - Related: ADR-0007, ADR-0018
 
