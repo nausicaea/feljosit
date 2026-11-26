@@ -113,6 +113,6 @@ def update_account(
         )
     except ServiceError as exc:
         auth.flash(str(exc), error=True)
-        return RedirectResponse(f"/accounts/{account_id}/edit", status_code=303)
+        return RedirectResponse(f"/accounts/{account.id}/edit", status_code=303)
     auth.flash(f"The account '{account.name}' is changed.")
     return RedirectResponse("/accounts", status_code=303)
