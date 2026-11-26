@@ -1,13 +1,15 @@
 """End-to-end tests for the web application, including security controls."""
 
+import io
+import zipfile
 from datetime import date
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from feljosit.models import Account, Category, Transaction, User
+from feljosit.models import Account, Category, ImportBatch, Transaction, User
 from tests.conftest import PASSWORD, create_app_user, csrf_from, fixture_bytes, login
 
 Client = tuple[TestClient, str]
@@ -188,6 +190,43 @@ def test_full_flow_import_categorise_budget_reports(client: Client, app: FastAPI
     assert 'href="/reports?period=all" aria-current="page"' in response.text
     assert http.get("/reports?from=abc").status_code == 422
     assert "Muster AG" in http.get("/transactions?q=muster").text
+
+
+def test_import_with_two_accounts_is_all_or_nothing(client: Client, app: FastAPI) -> None:
+    """If one statement of a file has an error, no statement of the file is imported."""
+    http, token = client
+    _add_account(http, token, iban="CH89 0023 5000 0123 4567 8")
+    _add_account(
+        http, token, name="Savings", account_type="savings", iban="CH03 0070 0110 0001 2345 6"
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("private.xml", fixture_bytes("camt053_v04_private.xml"))
+        archive.writestr("savings.xml", fixture_bytes("camt053_v08_savings.xml"))
+    db = app.state.session_factory()
+    private = db.scalar(select(Account).where(Account.name == "Private"))
+    assert private is not None
+    db.close()
+    # The private statement is valid for the selected account. The savings statement is not.
+    response = http.post(
+        "/import",
+        data={"csrf_token": token, "account_id": str(private.id)},
+        files={"statement": ("both.zip", buffer.getvalue(), "application/zip")},
+    )
+    assert "belongs to a different account" in response.text
+    db = app.state.session_factory()
+    assert db.scalar(select(func.count()).select_from(Transaction)) == 0
+    assert db.scalar(select(func.count()).select_from(ImportBatch)) == 0
+    db.close()
+    # Without a selected account, the same file goes to the two accounts.
+    response = http.post(
+        "/import",
+        data={"csrf_token": token, "account_id": ""},
+        files={"statement": ("both.zip", buffer.getvalue(), "application/zip")},
+    )
+    assert "7 new transactions" in response.text
+    assert "2 new transactions" in response.text
+    assert "belongs to a different account" not in response.text
 
 
 def test_transaction_filter_form_with_empty_account(client: Client) -> None:
