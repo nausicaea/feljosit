@@ -4,8 +4,6 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use argon2::{Algorithm, Argon2, Params, Version};
-use base64::Engine;
-use base64::engine::general_purpose::{STANDARD_NO_PAD, URL_SAFE_NO_PAD};
 use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
@@ -55,7 +53,7 @@ pub fn random_bytes<const N: usize>() -> [u8; N] {
 
 /// A random token with 32 bytes of entropy, URL-safe (as Python's `token_urlsafe(32)`).
 pub fn random_token() -> String {
-    URL_SAFE_NO_PAD.encode(random_bytes::<32>())
+    crate::encoding::base64_url_safe_no_pad(&random_bytes::<32>())
 }
 
 fn argon2(p: HashParams) -> Argon2<'static> {
@@ -77,8 +75,8 @@ pub fn hash_password(password: &str) -> String {
         p.memory,
         p.time,
         p.lanes,
-        STANDARD_NO_PAD.encode(salt),
-        STANDARD_NO_PAD.encode(out)
+        crate::encoding::base64_standard_no_pad(&salt),
+        crate::encoding::base64_standard_no_pad(&out)
     )
 }
 
@@ -108,8 +106,8 @@ fn parse_hash(encoded: &str) -> Option<ParsedHash> {
             _ => return None,
         }
     }
-    let salt = STANDARD_NO_PAD.decode(salt).ok()?;
-    let hash = STANDARD_NO_PAD.decode(hash).ok()?;
+    let salt = crate::encoding::base64_standard_no_pad_decode(salt)?;
+    let hash = crate::encoding::base64_standard_no_pad_decode(hash)?;
     if hash.is_empty() || hash.len() > 1024 || p.memory > 4 * 1024 * 1024 {
         return None;
     }
@@ -157,7 +155,7 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 pub fn hash_token(token: &str) -> String {
-    hex::encode(Sha256::digest(token.as_bytes()))
+    crate::encoding::hex(Sha256::digest(token.as_bytes()))
 }
 
 pub fn validate_password(password: &str) -> Result<()> {

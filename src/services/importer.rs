@@ -263,7 +263,7 @@ pub fn import_statement_file(
     user_id: i64,
     request: &ImportRequest<'_>,
 ) -> Result<ImportResult, ImportError> {
-    let digest = hex::encode(Sha256::digest(request.data));
+    let digest = crate::encoding::hex(Sha256::digest(request.data));
     let exists: Option<i64> = conn
         .query_row(
             "SELECT id FROM import_batches WHERE user_id = ?1 AND file_sha256 = ?2",

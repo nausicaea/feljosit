@@ -78,6 +78,6 @@
 {# The sort order tabs. #}
 {% macro sort_tabs(base) %}
 <nav class="tabs" aria-label="Sort order">
-  {% for s, label in sorts.items() %}{% if s != 'change' or data.has_trend %}<a href="{{ base }}?{{ dict(sort=s) | merge(period_query) | urlencode }}" {% if s == sort %}aria-current="page"{% endif %}>{{ label }}</a>{% endif %}{% endfor %}
+  {% for s, label in sorts|items %}{% if s != 'change' or data.has_trend %}<a href="{{ base }}?{{ dict(sort=s) | merge(period_query) | urlencode }}" {% if s == sort %}aria-current="page"{% endif %}>{{ label }}</a>{% endif %}{% endfor %}
 </nav>
 {% endmacro %}

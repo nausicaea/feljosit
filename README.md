@@ -161,6 +161,6 @@ Feljosit is in the public domain. The maintainer releases it with
 distribute it for each purpose, without conditions.
 
 The executable file also contains libraries of other authors (for example
-`axum`, `minijinja`, `rusqlite` and `jiff`). Their licences stay valid. Most of
+`minijinja`, `rusqlite`, `argon2` and `jiff`). Their licences stay valid. Most of
 them use the MIT or the Apache 2.0 licence. SQLite is in the public domain.
 `Cargo.lock` lists all libraries.

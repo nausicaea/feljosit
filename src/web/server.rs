@@ -1,92 +1,305 @@
-//! The HTTP server (axum on tokio).
+//! The HTTP server (HTTP/1.1 with the standard library).
 //!
-//! The server reads the complete request body with a size limit. Then a worker thread
-//! handles the request with [`App::handle`]. Thus a long import does not stop the
-//! other connections.
+//! The application is for one person on the same computer (ADR-0002). Thus a small
+//! server is sufficient: one thread for each connection, one request for each
+//! connection and a limit for the number of connections. The server reads the complete
+//! request with size limits and time limits. Then [`App::handle`] makes the response.
+//! See ADR-0021.
 
-use std::net::SocketAddr;
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
-
-use axum::body::Body;
-use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderName, HeaderValue, StatusCode};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use super::{App, Request, Response};
 use crate::db::log;
 
-async fn handle(
-    State(app): State<Arc<App>>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    request: axum::extract::Request,
-) -> axum::response::Response {
-    let (parts, body) = request.into_parts();
-    let mut req = Request {
-        method: parts.method.as_str().to_string(),
-        path: parts.uri.path().to_string(),
-        query: parts.uri.query().unwrap_or("").to_string(),
-        headers: parts
-            .headers
-            .iter()
-            .map(|(name, value)| {
-                (name.as_str().to_string(), String::from_utf8_lossy(value.as_bytes()).into_owned())
-            })
-            .collect(),
-        body: Vec::new(),
-        peer_is_loopback: peer.ip().is_loopback(),
-    };
-    let limit = app.max_body_bytes();
-    let declared_too_large =
-        req.header("content-length").is_some_and(|v| v.trim().parse::<usize>().map_or(true, |n| n > limit));
-    let response = if declared_too_large {
-        // App::handle refuses the request from the header. Do not read the body.
-        let app = app.clone();
-        let req = req.clone();
-        run(app, req).await
-    } else {
-        match axum::body::to_bytes(body, limit).await {
-            Ok(bytes) => {
-                req.body = bytes.to_vec();
-                run(app.clone(), req.clone()).await
+/// The maximum number of connections at the same time.
+const MAX_CONNECTIONS: usize = 64;
+/// The maximum size of the request line and the headers together.
+const MAX_HEAD_BYTES: usize = 64 * 1024;
+/// The maximum number of header lines.
+const MAX_HEADERS: usize = 100;
+/// The time limit for one read or write operation on the connection.
+const IO_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Serve the application on the listener. The function returns only if the listener
+/// has an error. Ctrl+C stops the process: SQLite keeps the database consistent.
+pub fn serve(app: Arc<App>, listener: TcpListener) -> io::Result<()> {
+    let active = Arc::new(AtomicUsize::new(0));
+    for stream in listener.incoming() {
+        let stream = match stream {
+            Ok(stream) => stream,
+            Err(error) => {
+                // For example "too many open files". Continue with the next connection.
+                log::warning(&format!("Cannot accept a connection: {error}"));
+                continue;
             }
-            Err(_) => app.finish(&req, Response::text(413, "Request body too large")),
+        };
+        if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+            active.fetch_sub(1, Ordering::SeqCst);
+            let _ = write_response(&stream, &Response::text(503, "Too many connections"), false);
+            continue;
+        }
+        let app = app.clone();
+        let guard = ActiveGuard(active.clone());
+        let spawned = std::thread::Builder::new().name("feljosit-connection".into()).spawn(move || {
+            let _guard = guard;
+            handle_connection(&app, stream);
+        });
+        if let Err(error) = spawned {
+            log::warning(&format!("Cannot start a thread for a connection: {error}"));
+        }
+    }
+    Ok(())
+}
+
+/// Decrease the number of active connections at the end of a connection.
+struct ActiveGuard(Arc<AtomicUsize>);
+
+impl Drop for ActiveGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// An error in the request. The server sends the status and closes the connection.
+struct BadRequest(u16, &'static str);
+
+fn handle_connection(app: &App, stream: TcpStream) {
+    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+    let _ = stream.set_nodelay(true);
+    let peer_is_loopback = stream.peer_addr().is_ok_and(|a| a.ip().is_loopback());
+    let peer = stream.peer_addr().map_or_else(|_| "-".to_string(), |a| a.ip().to_string());
+    let mut reader = BufReader::new(&stream);
+    let (req, response) = match read_request(app, &mut reader, &stream, peer_is_loopback) {
+        Ok(Some(req)) => {
+            let response = run(app, &req);
+            (req, response)
+        }
+        // The client closed the connection before it sent a request.
+        Ok(None) => return,
+        Err(BadRequest(status, message)) => {
+            let _ = write_response(&stream, &Response::text(status, message), false);
+            return;
         }
     };
-    log::info(&format!("{} \"{} {}\" {}", peer.ip(), req.method, req.path, response.status));
-    convert(response)
+    log::info(&format!("{peer} \"{} {}\" {}", req.method, req.path, response.status));
+    let _ = write_response(&stream, &response, req.method == "HEAD");
 }
 
-async fn run(app: Arc<App>, req: Request) -> Response {
-    let finish_app = app.clone();
-    let finish_req = req.clone();
-    match tokio::task::spawn_blocking(move || app.handle(&req)).await {
+/// Run the application. A panic in a handler gives the status 500. The other
+/// connections continue.
+fn run(app: &App, req: &Request) -> Response {
+    match catch_unwind(AssertUnwindSafe(|| app.handle(req))) {
         Ok(response) => response,
-        Err(error) => {
-            log::warning(&format!("A request handler stopped: {error}"));
-            finish_app.finish(&finish_req, Response::text(500, "Internal Server Error"))
+        Err(_) => {
+            log::warning("A request handler stopped.");
+            app.finish(req, Response::text(500, "Internal Server Error"))
         }
     }
 }
 
-fn convert(response: Response) -> axum::response::Response {
-    let mut out = axum::response::Response::new(Body::from(response.body));
-    *out.status_mut() = StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    for (name, value) in response.headers {
-        if let (Ok(name), Ok(value)) = (HeaderName::try_from(name), HeaderValue::try_from(value)) {
-            out.headers_mut().append(name, value);
+/// Read one line of the head. The line end (CRLF or LF) is not in the result.
+fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, BadRequest> {
+    let mut line = Vec::new();
+    let limit = u64::try_from(*budget).unwrap_or(u64::MAX).saturating_add(1);
+    let count = reader
+        .by_ref()
+        .take(limit)
+        .read_until(b'\n', &mut line)
+        .map_err(|_| BadRequest(400, "Bad Request"))?;
+    if count == 0 {
+        return Ok(None);
+    }
+    if count > *budget {
+        return Err(BadRequest(431, "Request Header Fields Too Large"));
+    }
+    *budget -= count;
+    if line.pop() != Some(b'\n') {
+        return Err(BadRequest(400, "Bad Request"));
+    }
+    if line.last() == Some(&b'\r') {
+        line.pop();
+    }
+    String::from_utf8(line).map(Some).map_err(|_| BadRequest(400, "Bad Request"))
+}
+
+/// Read a complete request. `Ok(None)` means that the client sent nothing.
+fn read_request(
+    app: &App,
+    reader: &mut impl BufRead,
+    stream: &TcpStream,
+    peer_is_loopback: bool,
+) -> Result<Option<Request>, BadRequest> {
+    let bad = || BadRequest(400, "Bad Request");
+    let mut budget = MAX_HEAD_BYTES;
+    let Some(request_line) = read_line(reader, &mut budget)? else {
+        return Ok(None);
+    };
+    let mut parts = request_line.split(' ');
+    let (Some(method), Some(target), Some(version), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(bad());
+    };
+    if !matches!(version, "HTTP/1.1" | "HTTP/1.0") {
+        return Err(BadRequest(505, "HTTP Version Not Supported"));
+    }
+    if method.is_empty() || !method.bytes().all(|b| b.is_ascii_uppercase()) {
+        return Err(bad());
+    }
+    // The origin form ("/path?query"). A proxy can send the absolute form.
+    let target = match target.find("://") {
+        Some(pos)
+            if target[..pos].eq_ignore_ascii_case("http") || target[..pos].eq_ignore_ascii_case("https") =>
+        {
+            let rest = &target[pos + 3..];
+            rest.find('/').map_or("/", |slash| &rest[slash..])
+        }
+        _ => target,
+    };
+    if !target.starts_with('/') || target.bytes().any(|b| b <= b' ' || b == 0x7f) {
+        return Err(bad());
+    }
+    let target = target.split('#').next().unwrap_or("/");
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+
+    let mut headers: Vec<(String, String)> = Vec::new();
+    loop {
+        let line = read_line(reader, &mut budget)?.ok_or_else(bad)?;
+        if line.is_empty() {
+            break;
+        }
+        // Folded header lines are not permitted (RFC 9112, section 5.2).
+        if line.starts_with([' ', '\t']) || headers.len() >= MAX_HEADERS {
+            return Err(bad());
+        }
+        let (name, value) = line.split_once(':').ok_or_else(bad)?;
+        let valid_name = !name.is_empty()
+            && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b));
+        if !valid_name {
+            return Err(bad());
+        }
+        headers.push((name.to_ascii_lowercase(), value.trim_matches([' ', '\t']).to_string()));
+    }
+
+    let mut req = Request {
+        method: method.to_string(),
+        path: path.to_string(),
+        query: query.to_string(),
+        headers,
+        body: Vec::new(),
+        peer_is_loopback,
+    };
+    // Browsers send forms with Content-Length. Refuse Transfer-Encoding: this also
+    // prevents request smuggling through a reverse proxy.
+    if req.header("transfer-encoding").is_some() {
+        return Err(BadRequest(501, "Transfer-Encoding is not supported"));
+    }
+    let lengths: Vec<&str> =
+        req.headers.iter().filter(|(n, _)| n == "content-length").map(|(_, v)| v.as_str()).collect();
+    if lengths.windows(2).any(|w| w[0] != w[1]) {
+        return Err(bad());
+    }
+    let length = match lengths.first() {
+        None => 0,
+        Some(value) => {
+            if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(bad());
+            }
+            match value.parse::<usize>() {
+                // App::handle refuses the request from the header. Do not read the body.
+                Ok(n) if n <= app.max_body_bytes() => n,
+                _ => return Ok(Some(req)),
+            }
+        }
+    };
+    if length > 0 && req.header("expect").is_some_and(|v| v.eq_ignore_ascii_case("100-continue")) {
+        let mut writer = stream;
+        writer.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").map_err(|_| bad())?;
+    }
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body).map_err(|_| bad())?;
+    req.body = body;
+    Ok(Some(req))
+}
+
+fn reason(status: u16) -> &'static str {
+    match status {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        304 => "Not Modified",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        413 => "Content Too Large",
+        422 => "Unprocessable Content",
+        429 => "Too Many Requests",
+        431 => "Request Header Fields Too Large",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        503 => "Service Unavailable",
+        505 => "HTTP Version Not Supported",
+        _ => "",
+    }
+}
+
+/// A header value must not contain a line end or other control characters.
+fn valid_header(name: &str, value: &str) -> bool {
+    !name.is_empty()
+        && name.bytes().all(|b| b.is_ascii_graphic() && b != b':')
+        && value.bytes().all(|b| b == b'\t' || (b >= b' ' && b != 0x7f))
+}
+
+/// Write the response and close the connection.
+fn write_response(mut stream: &TcpStream, response: &Response, head_only: bool) -> io::Result<()> {
+    let status = if (100..=999).contains(&response.status) { response.status } else { 500 };
+    let mut head = format!("HTTP/1.1 {status} {}\r\n", reason(status));
+    for (name, value) in &response.headers {
+        let reserved = name.eq_ignore_ascii_case("content-length") || name.eq_ignore_ascii_case("connection");
+        if !reserved && valid_header(name, value) {
+            head.push_str(&format!("{name}: {value}\r\n"));
         }
     }
-    out
+    head.push_str(&format!("content-length: {}\r\nconnection: close\r\n\r\n", response.body.len()));
+    stream.write_all(head.as_bytes())?;
+    if !head_only {
+        stream.write_all(&response.body)?;
+    }
+    stream.flush()?;
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    // Read what the client still sends (at most 64 KiB) before the socket closes. Else
+    // the operating system can reset the connection and the client loses the response.
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+    let _ = io::copy(&mut stream.take(64 * 1024), &mut io::sink());
+    Ok(())
 }
 
-async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
-    log::info("The server stops.");
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Serve the application on the listener until the user presses Ctrl+C.
-pub async fn serve(app: Arc<App>, listener: tokio::net::TcpListener) -> std::io::Result<()> {
-    let router = axum::Router::new().fallback(handle).with_state(app);
-    axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await
+    #[test]
+    fn header_values_without_line_ends() {
+        assert!(valid_header("location", "/a?b=c"));
+        assert!(!valid_header("location", "/a\r\nset-cookie: x=y"));
+        assert!(!valid_header("bad name", "x"));
+    }
+
+    #[test]
+    fn reason_phrases() {
+        assert_eq!(reason(303), "See Other");
+        assert_eq!(reason(299), "");
+    }
 }

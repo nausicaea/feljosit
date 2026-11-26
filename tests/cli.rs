@@ -43,7 +43,7 @@ fn call(args: &[&str], dir: &std::path::Path, passwords: &[&str]) -> Output {
 
 #[test]
 fn migrate() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     let result = call(&["migrate"], dir.path(), &[]);
     assert_eq!(result.code, 0, "{}", result.err);
     assert!(result.out.contains("up to date"));
@@ -52,7 +52,7 @@ fn migrate() {
 
 #[test]
 fn create_user_and_set_password() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     let password = "a long enough password";
     let first = call(&["create-user", "anna"], dir.path(), &[password, password]);
     assert_eq!(first.code, 0, "{}", first.err);
@@ -66,7 +66,7 @@ fn create_user_and_set_password() {
 
 #[test]
 fn password_mismatch() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     let result = call(&["create-user", "anna"], dir.path(), &["first long password", "second long password"]);
     assert_eq!(result.code, 1);
     assert!(result.err.contains("not the same"));
@@ -74,7 +74,7 @@ fn password_mismatch() {
 
 #[test]
 fn serve_warns_on_public_address() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     let result = call(&["serve", "--host", "0.0.0.0", "--port", "9000"], dir.path(), &[]);
     assert_eq!(result.code, 0);
     assert_eq!(result.served, vec![ServeOptions { host: "0.0.0.0".into(), port: 9000, open_browser: false }]);
@@ -83,7 +83,7 @@ fn serve_warns_on_public_address() {
 
 #[test]
 fn start_without_arguments_opens_the_browser() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     let result = call(&[], dir.path(), &[]);
     assert_eq!(result.code, 0);
     assert_eq!(
@@ -95,7 +95,7 @@ fn start_without_arguments_opens_the_browser() {
 
 #[test]
 fn help_version_and_errors() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     assert!(call(&["--help"], dir.path(), &[]).out.contains("create-user"));
     assert!(call(&["--version"], dir.path(), &[]).out.starts_with("feljosit "));
     let unknown = call(&["unknown"], dir.path(), &[]);
@@ -107,7 +107,7 @@ fn help_version_and_errors() {
 #[test]
 fn database_file_is_private() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = common::tempdir();
     assert_eq!(call(&["migrate"], dir.path(), &[]).code, 0);
     let data = dir.path().join("data");
     assert_eq!(std::fs::metadata(&data).unwrap().permissions().mode() & 0o077, 0);

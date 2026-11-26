@@ -15,12 +15,12 @@
   <a class="brand" href="/budget">Feljosit</a>
   <nav aria-label="Main">
     {% set path = request_path %}
-    <a href="/budget" {% if path.startswith('/budget') %}aria-current="page"{% endif %}>Budget</a>
-    <a href="/accounts" {% if path.startswith('/accounts') %}aria-current="page"{% endif %}>Accounts</a>
-    <a href="/transactions" {% if path.startswith('/transactions') %}aria-current="page"{% endif %}>Transactions</a>
-    <a href="/import" {% if path.startswith('/import') %}aria-current="page"{% endif %}>Import</a>
-    <a href="/categories" {% if path.startswith('/categories') %}aria-current="page"{% endif %}>Categories</a>
-    <a href="/reports" {% if path.startswith('/reports') %}aria-current="page"{% endif %}>Reports</a>
+    <a href="/budget" {% if path is startingwith('/budget') %}aria-current="page"{% endif %}>Budget</a>
+    <a href="/accounts" {% if path is startingwith('/accounts') %}aria-current="page"{% endif %}>Accounts</a>
+    <a href="/transactions" {% if path is startingwith('/transactions') %}aria-current="page"{% endif %}>Transactions</a>
+    <a href="/import" {% if path is startingwith('/import') %}aria-current="page"{% endif %}>Import</a>
+    <a href="/categories" {% if path is startingwith('/categories') %}aria-current="page"{% endif %}>Categories</a>
+    <a href="/reports" {% if path is startingwith('/reports') %}aria-current="page"{% endif %}>Reports</a>
   </nav>
   <div class="user">
     <a href="/settings">{{ auth.user.username }}</a>

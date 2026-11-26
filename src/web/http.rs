@@ -73,8 +73,9 @@ impl Response {
         Response::new(status, "text/html; charset=utf-8", body)
     }
 
-    pub fn json(status: u16, value: &serde_json::Value) -> Response {
-        Response::new(status, "application/json", value.to_string())
+    /// A JSON response. The body must be valid JSON (see [`crate::encoding`]).
+    pub fn json(status: u16, body: String) -> Response {
+        Response::new(status, "application/json", body)
     }
 
     /// A redirect with "303 See Other".
@@ -134,7 +135,7 @@ pub struct Params {
 
 impl Params {
     pub fn from_query(query: &str) -> Params {
-        Params { pairs: form_urlencoded::parse(query.as_bytes()).into_owned().collect(), files: Vec::new() }
+        Params { pairs: crate::encoding::form_parse(query.as_bytes()), files: Vec::new() }
     }
 
     /// The last value of a parameter.
@@ -170,7 +171,7 @@ pub fn parse_form(content_type: Option<&str>, body: &[u8]) -> Option<Params> {
             })?;
             parse_multipart(body, &boundary)
         }
-        _ => Some(Params { pairs: form_urlencoded::parse(body).into_owned().collect(), files: Vec::new() }),
+        _ => Some(Params { pairs: crate::encoding::form_parse(body), files: Vec::new() }),
     }
 }
 

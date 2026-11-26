@@ -200,25 +200,47 @@ fn browser_url(host: &str, port: u16) -> String {
     if host.contains(':') { format!("http://[{host}]:{port}/") } else { format!("http://{host}:{port}/") }
 }
 
+/// Open the address in the default browser of the user. The function starts the
+/// program of the operating system directly, without a shell. Thus the characters of
+/// the address have no special function.
+fn open_browser(url: &str) -> io::Result<()> {
+    use std::process::{Command, Stdio};
+    let mut command = if cfg!(windows) {
+        let mut command = Command::new("rundll32.exe");
+        command.arg("url.dll,FileProtocolHandler");
+        command
+    } else if cfg!(target_os = "macos") {
+        Command::new("open")
+    } else {
+        Command::new("xdg-open")
+    };
+    let mut child =
+        command.arg(url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+    // Some programs stop only when the browser stops. Do not wait for them here.
+    let url = url.to_string();
+    std::thread::spawn(move || {
+        if !child.wait().is_ok_and(|status| status.success()) {
+            log::warning(&format!("Cannot open the browser. Open {url} manually."));
+        }
+    });
+    Ok(())
+}
+
 /// Start the web server. This function returns when the user stops the server.
 pub fn run_server(settings: Settings, options: ServeOptions) -> Result<(), String> {
     let url = browser_url(&options.host, options.port);
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| format!("Cannot start the server: {e}"))?;
     let address = if options.host.contains(':') {
         format!("[{}]:{}", options.host, options.port)
     } else {
         format!("{}:{}", options.host, options.port)
     };
-    let listener = match runtime.block_on(tokio::net::TcpListener::bind(&address)) {
+    let listener = match std::net::TcpListener::bind(&address) {
         Ok(listener) => listener,
         Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
             if options.open_browser {
                 // Possibly Feljosit runs already. Then the browser shows it.
                 log::warning(&format!("The port {} is in use. The browser opens {url}.", options.port));
-                let _ = open::that(&url);
+                let _ = open_browser(&url);
                 return Ok(());
             }
             return Err(format!(
@@ -236,11 +258,10 @@ pub fn run_server(settings: Settings, options: ServeOptions) -> Result<(), Strin
     log::info(&format!("Feljosit {} runs at {url}", crate::VERSION));
     log::info(&format!("The data is in {}", database.display()));
     log::info("Press Ctrl+C to stop the server.");
-    if options.open_browser && open::that(&url).is_err() {
+    if options.open_browser && open_browser(&url).is_err() {
         log::warning(&format!("Cannot open the browser. Open {url} manually."));
     }
-    runtime
-        .block_on(crate::web::server::serve(Arc::new(app), listener))
+    crate::web::server::serve(Arc::new(app), listener)
         .map_err(|e| format!("The server stopped with an error: {e}"))
 }
 
@@ -254,7 +275,7 @@ pub fn main(args: Vec<String>) -> i32 {
     let started_without_arguments = args.is_empty();
     let mut stdout = io::stdout();
     let mut stderr = io::stderr();
-    let mut read_password = |prompt: &str| rpassword::prompt_password(prompt);
+    let mut read_password = |prompt: &str| crate::terminal::prompt_password(prompt);
     let mut server = run_server;
     let env = std::env::vars().collect();
     let code = run(
