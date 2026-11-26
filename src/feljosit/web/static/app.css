@@ -15,6 +15,11 @@
   --income: #2f7d5b;
   --expense: #c8553d;
   --series: #2b5fab;
+  /* Strength of the heat levels in the category report (percent of --expense). */
+  --heat-1: 10%;
+  --heat-2: 22%;
+  --heat-3: 36%;
+  --heat-4: 52%;
   color-scheme: light;
 }
 
@@ -35,6 +40,10 @@
     --income: #5fd394;
     --expense: #ff8a6a;
     --series: #7aa7ff;
+    --heat-1: 24%;
+    --heat-2: 34%;
+    --heat-3: 44%;
+    --heat-4: 58%;
     color-scheme: dark;
   }
 }
@@ -175,3 +184,25 @@ details { margin-top: 12px; }
   table.budget input[name="amount"] { width: 100%; min-width: 0; }
   table.budget .pill { min-width: 0; max-width: 100%; padding: 2px 6px; }
 }
+
+/* Reports: spending by category over time. */
+.report-tabs { margin: 4px 0 12px; }
+.table-scroll { overflow-x: auto; }
+table.heat th[scope="row"], table.heat thead th:first-child {
+  min-width: 10rem; position: sticky; left: 0; z-index: 1; background: var(--surface);
+}
+table.heat .group-row th[scope="rowgroup"] { position: sticky; left: 0; z-index: 1; }
+table.heat .first-bucket { border-left: 2px solid var(--border); }
+table.heat td.num { white-space: nowrap; }
+table.heat .strong { font-weight: 600; }
+table.heat tr.selected th[scope="row"] { box-shadow: inset 4px 0 0 var(--series); }
+table.heat tr.selected td { font-weight: 600; }
+table.heat tbody.uncategorised tr:first-child > * { border-top: 2px solid var(--border); }
+table.heat .group-row th, table.heat .group-row td { background: var(--zero-bg); font-weight: 600; }
+table.heat tfoot th, table.heat tfoot td { font-weight: 600; border-top: 2px solid var(--border); }
+.heat-1 { background: color-mix(in srgb, var(--expense) var(--heat-1), transparent); }
+.heat-2 { background: color-mix(in srgb, var(--expense) var(--heat-2), transparent); }
+.heat-3 { background: color-mix(in srgb, var(--expense) var(--heat-3), transparent); }
+.heat-4 { background: color-mix(in srgb, var(--expense) var(--heat-4), transparent); }
+.change.up { color: var(--neg); font-weight: 600; }
+.change.down { color: var(--pos); font-weight: 600; }
