@@ -100,3 +100,4 @@ already have it.
 - Do not add real bank data to the repository. Use synthetic test data.
 - Filter each database query by the user (`user_id`).
 - Use bound parameters (`?1`) in SQL. Do not put values from a request into SQL text.
+- A contribution is in the public domain, as the rest of the project ([UNLICENSE](UNLICENSE)).

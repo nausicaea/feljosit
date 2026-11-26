@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 description = "Local-first personal budgeting for the Swiss financial sector, with ISO 20022 camt.053 import."
 readme = "README.md"
+license = "Unlicense"
 publish = false
 
 

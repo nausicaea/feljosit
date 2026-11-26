@@ -6,6 +6,10 @@ It imports ISO 20022 camt.053 bank statements from Swiss banks.
 
 Your data stays on your computer. The application sends no data to a cloud service.
 
+> **An AI wrote this project.** Claude, an AI model of Anthropic, wrote all the
+> source code, the tests and the documentation of Feljosit with Claude Code.
+> See [Authorship](#authorship).
+
 ## Features
 
 - Import of camt.053 statements (versions 02 to 13, XML or ZIP), as the Swiss
@@ -126,6 +130,37 @@ The database is one file: `feljosit.sqlite3` in the data directory.
 - [Contributing](CONTRIBUTING.md) (with the procedure to build Feljosit from the source code)
 - [Writing rules (ASD-STE100)](docs/writing-style.md)
 
+## Authorship
+
+Claude, an AI model of Anthropic, wrote this project with Claude Code: all the
+source code (first in Python, then in Rust), the tests, the templates, the
+documentation, the architecture decision records and the CI workflows.
+
+The maintainer gave the requirements and the decisions, examined the changes and
+merged them. The maintainer made only these changes without Claude:
+
+- The version changes with `cz bump` (version numbers and changelog).
+- One change to `.pre-commit-config.yaml` on 25 November 2026.
+
+The Git history shows the work of Claude: each such commit has the trailer
+`Co-Authored-By: Claude` or has Claude as its author.
+
+The time frame of the development:
+
+| Date | Work |
+| --- | --- |
+| 25 November 2026 | The first commit (16:59 UTC). The Python version 0.1.0 and 0.2.0. |
+| 26 November 2026 | The Python version 0.3.0. The rewrite in Rust as one executable file (0.4.0). |
+
+All of the work took less than two days.
+
 ## Licence
 
-The licence is not decided yet. Until the maintainers add a licence file, all rights are reserved.
+Feljosit is in the public domain. The maintainer releases it with
+[The Unlicense](UNLICENSE). You can copy, change, publish, use, sell and
+distribute it for each purpose, without conditions.
+
+The executable file also contains libraries of other authors (for example
+`axum`, `minijinja`, `rusqlite` and `jiff`). Their licences stay valid. Most of
+them use the MIT or the Apache 2.0 licence. SQLite is in the public domain.
+`Cargo.lock` lists all libraries.
