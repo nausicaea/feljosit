@@ -82,6 +82,12 @@ The import does these steps:
 - It finds transfers between your budget accounts. If you add an account later,
   the application finds the transfers to this account in the transactions that
   you imported before.
+- It finds transfers that have no IBAN, for example a payment to your credit card.
+  Two transactions are a transfer if they are on two different accounts, have
+  the opposite amount, and are booked at most 4 days apart. Both must be
+  uncategorised, and the pair must be clear: if there are two possible partners,
+  the application does not decide. The result shows the number of these
+  transfers.
 - It compares the closing balance of the statement with the account balance.
 
 CAUTION: If the closing balance does not agree, transactions are possibly missing.
@@ -96,6 +102,13 @@ Import the older statements too.
 For a transfer between your accounts, select "Transfer". A transfer from a budget
 account to a tracking account (for example to pillar 3a) needs a category,
 because the money leaves the budget.
+
+"Apply the rules to uncategorised transactions" on the categories page also finds
+transfers from matching transactions (see "Procedure: import a statement").
+
+CAUTION: Two unrelated transactions with the same amount can become a wrong
+transfer. If a transfer is wrong, select the correct category for both
+transactions of the pair.
 
 ## Procedure: move a category into a different group
 

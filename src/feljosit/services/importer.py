@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from feljosit import camt053
 from feljosit.iban import format_iban
 from feljosit.models import Account, AccountType, ImportBatch, Transaction, TransactionSource
+from feljosit.services import transfers
 from feljosit.services.accounts import add_starting_balance, create_account, get_account
 from feljosit.services.categorise import Categoriser
 from feljosit.services.errors import ServiceError
@@ -28,6 +29,8 @@ class StatementResult:
     duplicate_count: int = 0
     categorised_count: int = 0
     transfer_count: int = 0
+    #: Transfers found from a matching transaction on a different account.
+    matched_transfer_count: int = 0
     skipped_entries: int = 0
     account_created: bool = False
     closing_balance_minor: int | None = None
@@ -193,10 +196,22 @@ def import_statement_file(
         _check_account(account, statement)
         targets.append((statement, account, created))
     categoriser = Categoriser(db, user_id)
+    # The order of the methods (see feljosit.services.categorise): first the
+    # transfers from the IBAN, then the transfers from matching transactions, then
+    # the rules and the history.
+    pending: list[tuple[Transaction, StatementResult]] = []
     for statement, account, created in targets:
-        item = _import_statement(db, categoriser, batch, account, statement)
+        item = _import_statement(db, categoriser, batch, account, statement, pending)
         item.account_created = created
         result.statements.append(item)
+    _match_transfers(db, user_id, pending)
+    for tx, item in pending:
+        if tx.is_transfer:
+            continue
+        tx.category_id = categoriser.suggest(tx.counterparty, tx.counterparty_iban, tx.description)
+        if tx.category_id is not None:
+            item.categorised_count += 1
+    db.flush()
     batch.new_count = result.new_count
     batch.duplicate_count = result.duplicate_count
     return result
@@ -208,7 +223,13 @@ def _import_statement(
     batch: ImportBatch,
     account: Account,
     statement: camt053.Statement,
+    pending: list[tuple[Transaction, StatementResult]],
 ) -> StatementResult:
+    """Add the new transactions of one statement.
+
+    The new transactions of budget accounts that are not transfers go to
+    ``pending``. They get a category after the matching of transfers.
+    """
     result = StatementResult(
         account_id=account.id,
         account_name=account.name,
@@ -250,11 +271,7 @@ def _import_statement(
             tx.is_transfer = True
             result.transfer_count += 1
         elif account.on_budget:
-            tx.category_id = categoriser.suggest(
-                item.counterparty, item.counterparty_iban, item.description
-            )
-            if tx.category_id is not None:
-                result.categorised_count += 1
+            pending.append((tx, result))
         db.add(tx)
         result.new_count += 1
 
@@ -264,6 +281,24 @@ def _import_statement(
         result.closing_balance_minor = closing.amount_minor
         result.computed_balance_minor = _balance_on(db, account, closing.date)
     return result
+
+
+def _match_transfers(
+    db: Session, user_id: int, pending: list[tuple[Transaction, StatementResult]]
+) -> None:
+    """Find the transfers between the new transactions and all other transactions."""
+    if not pending:
+        return
+    db.flush()
+    dates = [tx.booking_date for tx, _ in pending]
+    pairs = transfers.match_transfers(db, user_id, min(dates), max(dates))
+    by_id = {id(tx): item for tx, item in pending}
+    for pair in pairs:
+        for tx in pair:
+            item = by_id.get(id(tx))
+            if item is not None:
+                item.transfer_count += 1
+                item.matched_transfer_count += 1
 
 
 def _balance_on(db: Session, account: Account, on: date) -> int:

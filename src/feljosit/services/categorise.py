@@ -12,6 +12,9 @@ The order of the methods:
    not regular expressions. This prevents ReDoS attacks.
 3. History. If the user categorised a transaction with the same counterparty IBAN
    or counterparty name before, the most recent category applies.
+
+Between 1 and 2, :mod:`feljosit.services.transfers` finds the transfers that have
+no IBAN: two matching transactions on two accounts.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from feljosit.models import (
     Transaction,
 )
 from feljosit.services.errors import NotFoundError, ServiceError
+from feljosit.services.transfers import match_transfers
 
 
 @dataclass(frozen=True)
@@ -171,7 +175,12 @@ def create_rule(
 
 
 def apply_to_uncategorised(db: Session, user_id: int) -> int:
-    """Apply the rules and the history to all uncategorised transactions in the budget."""
+    """Find transfers and apply the rules and the history to the uncategorised transactions.
+
+    The matching of transfers (:mod:`feljosit.services.transfers`) applies first, to
+    all dates. Return the number of changed transactions.
+    """
+    matched = 2 * len(match_transfers(db, user_id))
     categoriser = Categoriser(db, user_id)
     txs: Iterable[Transaction] = db.scalars(
         select(Transaction)
@@ -194,4 +203,4 @@ def apply_to_uncategorised(db: Session, user_id: int) -> int:
         if suggestion is not None:
             tx.category_id = suggestion
             changed += 1
-    return changed
+    return matched + changed

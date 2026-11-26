@@ -37,3 +37,4 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0013](0013-use-uv-for-project-management.md) | Use uv for project and dependency management | Accepted |
 | [0014](0014-xml-resource-limits.md) | Limit the resources that one camt.053 import can use | Accepted |
 | [0015](0015-no-application-level-encryption.md) | Do not encrypt the data in the application | Rejected |
+| [0016](0016-transfer-matching.md) | Find transfers from matching transactions | Proposed |
