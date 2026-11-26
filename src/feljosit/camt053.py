@@ -127,6 +127,10 @@ class Statement:
     balances: tuple[Balance, ...]
     transactions: tuple[StatementTransaction, ...]
     skipped_entries: int = 0
+    #: The name of the account (``Acct/Nm``), if the bank gives it.
+    account_name: str | None = None
+    #: The name of the bank (``Acct/Svcr/FinInstnId/Nm``), if the bank gives it.
+    servicer_name: str | None = None
 
     def balance(self, *codes: str) -> Balance | None:
         """Return the first balance that has one of the type codes, for example ``CLBD``."""
@@ -384,6 +388,8 @@ def _parse_statement(ctx: _Ctx, version: int, stmt: Element) -> Statement:
         balances=balances,
         transactions=tuple(transactions),
         skipped_entries=skipped,
+        account_name=_text(stmt, "Acct/Nm"),
+        servicer_name=_text(stmt, "Acct/Svcr/FinInstnId/Nm"),
     )
 
 

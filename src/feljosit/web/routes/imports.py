@@ -76,6 +76,7 @@ def import_upload(
             filename=statement.filename or "statement.xml",
             data=data,
             account_id=int(account_id) if account_id.isdigit() else None,
+            budget_currency=settings.budget_currency,
         )
         # Commit before the lock is released. Then the next import sees this import.
         auth.db.commit()
