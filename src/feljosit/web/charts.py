@@ -18,6 +18,9 @@ PAD_LEFT = 72
 PAD_RIGHT = 32
 PAD_TOP = 16
 PAD_BOTTOM = 40
+MAX_X_LABELS = 12
+"""The maximum number of labels on the x axis. More labels touch each other."""
+MONTH_LABEL_STEPS = (1, 2, 3, 6, 12, 24)
 
 
 @dataclass(frozen=True)
@@ -92,12 +95,37 @@ def _ticks(low: float, high: float, step: float, fmt: Formatter) -> list[Tick]:
     return ticks
 
 
+def month_label_step(count: int, max_labels: int = MAX_X_LABELS) -> int:
+    """The smallest step in months that gives a maximum of ``max_labels`` labels."""
+    for step in MONTH_LABEL_STEPS:
+        if -(-count // step) <= max_labels:
+            return step
+    return -(-count // max_labels)
+
+
+def _x_labels(
+    positions: list[float], labels: list[str], label_step: int, label_offset: int
+) -> list[XLabel]:
+    """Labels at the positions where ``(index + label_offset) % label_step == 0``."""
+    return [
+        XLabel(x, label)
+        for i, (x, label) in enumerate(zip(positions, labels, strict=True))
+        if (i + label_offset) % label_step == 0
+    ]
+
+
 def grouped_bars(
     labels: list[str],
     series: list[tuple[str, list[int]]],
     fmt: Formatter,
+    label_step: int = 1,
+    label_offset: int = 0,
 ) -> Chart:
-    """Bars for each label, one bar for each series. ``fmt`` formats a value."""
+    """Bars for each label, one bar for each series. ``fmt`` formats a value.
+
+    The x axis shows each ``label_step``-th label, see ``_x_labels``. All bars keep
+    their full label in the tooltip.
+    """
     values = [v for _, vs in series for v in vs] or [0]
     low, high, step = _scale(min(values), max(values))
     plot_width = WIDTH - PAD_LEFT - PAD_RIGHT
@@ -121,16 +149,24 @@ def grouped_bars(
                     title=f"{label}: {fmt(value)}",
                 )
             )
-    x_labels = [XLabel(PAD_LEFT + i * slot + slot / 2, label) for i, label in enumerate(labels)]
+    positions = [PAD_LEFT + i * slot + slot / 2 for i in range(len(labels))]
+    x_labels = _x_labels(positions, labels, label_step, label_offset)
     return Chart(WIDTH, HEIGHT, bars, _ticks(low, high, step, fmt), x_labels, zero)
 
 
-def line(labels: list[str], values: list[int], fmt: Formatter) -> Chart:
+def line(
+    labels: list[str],
+    values: list[int],
+    fmt: Formatter,
+    label_step: int = 1,
+    label_offset: int = 0,
+) -> Chart:
+    """A line with a dot for each value. The x axis labels are as in ``grouped_bars``."""
     low, high, step = _scale(min(values or [0]), max(values or [0]))
     plot_width = WIDTH - PAD_LEFT - PAD_RIGHT
     count = max(len(values) - 1, 1)
     points = [(PAD_LEFT + i * plot_width / count, _y(v, low, high)) for i, v in enumerate(values)]
-    x_labels = [XLabel(x, label) for (x, _), label in zip(points, labels, strict=True)]
+    x_labels = _x_labels([x for x, _ in points], labels, label_step, label_offset)
     return Chart(
         WIDTH,
         HEIGHT,

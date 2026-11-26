@@ -92,6 +92,18 @@ def custom_range(start: date | None, end: date | None, today: date) -> tuple[dat
 OptionalDate = Annotated[date | None, BeforeValidator(_empty_as_none)]
 
 
+def _month_labels(months: list[date]) -> tuple[int, int]:
+    """The label step and offset for a chart with one value for each month.
+
+    The labels are on calendar boundaries, for example January, April, July and
+    October for a step of 3 months.
+    """
+    step = charts.month_label_step(len(months))
+    if not months:
+        return step, 0
+    return step, months[0].year * 12 + months[0].month - 1
+
+
 def _axis_formatter(currency: str) -> charts.Formatter:
     """Format axis labels in whole currency units (for example whole francs)."""
 
@@ -132,6 +144,7 @@ def reports_page(
     fmt_axis = _axis_formatter(currency)
     flows = reports.monthly_flows(auth.db, auth.user.id, start, end)
     labels = [month_short(f.month) for f in flows]
+    label_step, label_offset = _month_labels([f.month for f in flows])
     flow_chart = charts.grouped_bars(
         labels,
         [
@@ -139,6 +152,8 @@ def reports_page(
             ("bar-expense", [-f.expenses for f in flows]),
         ],
         fmt_axis,
+        label_step,
+        label_offset,
     )
     spending = reports.spending_by_category(auth.db, auth.user.id, start, end)
     spending_rows = charts.horizontal_bars(
@@ -151,6 +166,8 @@ def reports_page(
             [month_short(m) for m, _ in series],
             [v for _, v in series],
             _axis_formatter(cur),
+            label_step,
+            label_offset,
         )
         for cur, series in worth.items()
     }
