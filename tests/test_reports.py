@@ -1,11 +1,13 @@
 from datetime import date
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from feljosit.models import AccountType, Category, User
 from feljosit.services import accounts, reports
 from feljosit.web import charts
+from feljosit.web.routes.reports import custom_range
 
 
 def test_flows_spending_and_net_worth(db: Session, user: User) -> None:
@@ -58,3 +60,48 @@ def test_charts_geometry() -> None:
     assert rows[0].percent == 100 and rows[1].percent == 50
     assert round(rows[0].share, 1) == 66.7
     assert charts.horizontal_bars([], str) == []
+
+
+def test_custom_range() -> None:
+    today = date(2026, 11, 26)
+    assert custom_range(date(2026, 1, 15), date(2026, 3, 10), today) == (
+        date(2026, 1, 15),
+        date(2026, 3, 10),
+    )
+    assert custom_range(date(2026, 5, 1), None, today) == (date(2026, 5, 1), today)
+    assert custom_range(None, date(2026, 6, 30), today) == (date(2025, 7, 1), date(2026, 6, 30))
+    assert custom_range(date(2006, 12, 1), date(2026, 11, 30), today)[0] == date(2006, 12, 1)
+    with pytest.raises(ValueError, match="on or before"):
+        custom_range(date(2026, 3, 1), date(2026, 2, 1), today)
+    with pytest.raises(ValueError, match="maximum of 20 years"):
+        custom_range(date(2006, 11, 30), date(2026, 11, 30), today)
+    with pytest.raises(ValueError, match="Type dates"):
+        custom_range(date(1, 1, 1), date(2026, 1, 1), today)
+    with pytest.raises(ValueError, match="Type dates"):
+        custom_range(None, date(9999, 12, 31), today)
+
+
+def test_flows_with_partial_months(db: Session, user: User) -> None:
+    account = accounts.create_account(
+        db,
+        user.id,
+        name="Private",
+        account_type=AccountType.CHECKING,
+        currency="CHF",
+        budget_currency="CHF",
+    )
+    for on, amount in [
+        (date(2026, 1, 5), -100),
+        (date(2026, 1, 20), -200),
+        (date(2026, 2, 25), -400),
+    ]:
+        accounts.add_manual_transaction(
+            db, account, booking_date=on, amount_minor=amount, counterparty="x", category_id=None
+        )
+    flows = reports.monthly_flows(db, user.id, date(2026, 1, 10), date(2026, 2, 20))
+    assert [(f.month, f.expenses) for f in flows] == [
+        (date(2026, 1, 1), -200),
+        (date(2026, 2, 1), 0),
+    ]
+    worth = reports.net_worth(db, user.id, date(2026, 1, 10), date(2026, 2, 20))
+    assert [v for _, v in worth["CHF"]] == [-300, -300]

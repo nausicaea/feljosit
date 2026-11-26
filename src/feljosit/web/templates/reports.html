@@ -8,6 +8,13 @@
     {% for p in periods %}<a href="/reports?period={{ p }}" {% if p == period %}aria-current="page"{% endif %}>{{ p[:-1] }} months</a>{% endfor %}
   </nav>
 </div>
+<form method="get" action="/reports" class="filters" aria-label="Custom period">
+  <label>From <input type="date" name="from" value="{{ form_from }}" min="1900-01-01" max="9998-12-31" required></label>
+  <label>To <input type="date" name="to" value="{{ form_to }}" min="1900-01-01" max="9998-12-31" required></label>
+  <button type="submit">Show</button>
+  {% if custom %}<a href="/reports">Remove the custom period</a>{% endif %}
+</form>
+{% if error %}<p class="flash error" role="alert">{{ error }} The page shows the {{ period[:-1] }} months period.</p>{% endif %}
 <p class="hint">{{ start | swiss_date }} to {{ end | swiss_date }}. Only budget accounts. Transfers are not included.</p>
 
 <dl class="facts">
