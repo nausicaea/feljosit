@@ -9,6 +9,9 @@
   <h2>Result</h2>
   {% for s in result.statements %}
   <h3>{{ s.account_name }}{% if s.statement_id %} · statement {{ s.statement_id }}{% endif %}</h3>
+  {% if s.account_created %}
+  <p class="flash ok">No account had the IBAN of this statement. The import added the account "{{ s.account_name }}". <a href="/accounts/{{ s.account_id }}/edit">Change the name and the type</a>.</p>
+  {% endif %}
   <ul>
     <li>{{ s.new_count }} new transactions</li>
     <li>{{ s.duplicate_count }} transactions were imported before (ignored)</li>
@@ -34,7 +37,7 @@
     </label>
     <label>Account
       <select name="account_id">
-        <option value="">Automatic (find the account from the IBAN)</option>
+        <option value="">Automatic (find the account from the IBAN, or add it)</option>
         {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}{% if a.iban %} · {{ a.iban | iban }}{% endif %}</option>{% endfor %}
       </select>
     </label>

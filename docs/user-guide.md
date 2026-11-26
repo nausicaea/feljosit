@@ -26,6 +26,29 @@ A tracking account shows only the balance. It is not part of the budget.
 
 An account in a currency other than CHF must be a tracking account.
 
+You do not have to add an account before you import a statement. If no account
+has the IBAN of the statement, the import adds the account. See
+"Procedure: import a statement".
+
+## Procedure: edit an account
+
+1. Click "Accounts".
+2. Click "Edit" in the row of the account.
+3. Change the name, the type, or "Budget or tracking".
+4. Click "Save".
+
+You cannot change the IBAN or the currency.
+
+CAUTION: If you change a budget account to a tracking account, its transactions
+lose their categories. If you change a tracking account to a budget account, its
+starting balance goes to "Ready to Assign". You must categorise its other
+transactions.
+
+When you change "Budget or tracking", the application finds the transfers
+between this account and your other accounts again. A movement between two budget
+accounts, or between two tracking accounts, is a transfer. A movement between a
+budget account and a tracking account needs a category.
+
 ## Procedure: get a camt.053 statement from your bank
 
 1. Log in to your e-banking.
@@ -40,17 +63,25 @@ Ask your bank if you cannot find it.
 
 1. Click "Import".
 2. Select the file.
-3. Keep "Automatic" for the account, or select the account.
+3. Keep "Automatic" for the account, or select the account. Keep "Automatic" if
+   the file has statements for more than one account.
 4. Click "Import".
 5. Read the result.
 
 The import does these steps:
 
+- It finds the account from the IBAN of each statement. If no account has the
+  IBAN, it adds a private account. The name comes from the statement, for example
+  "Account CH89 0023 5000 0123 4567 8". An account in CHF is a budget account.
+  An account in a different currency is a tracking account. Change the name and
+  the type after the import (see "Procedure: edit an account").
 - It ignores entries that are not booked.
 - It ignores transactions that you imported before.
 - It uses the opening balance of the first statement as the starting balance.
 - It gives categories to known transactions.
-- It finds transfers between your budget accounts.
+- It finds transfers between your budget accounts. If you add an account later,
+  the application finds the transfers to this account in the transactions that
+  you imported before.
 - It compares the closing balance of the statement with the account balance.
 
 CAUTION: If the closing balance does not agree, transactions are possibly missing.

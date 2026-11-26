@@ -10,8 +10,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from feljosit import camt053
-from feljosit.models import Account, ImportBatch, Transaction, TransactionSource
-from feljosit.services.accounts import add_starting_balance, get_account
+from feljosit.iban import format_iban
+from feljosit.models import Account, AccountType, ImportBatch, Transaction, TransactionSource
+from feljosit.services.accounts import add_starting_balance, create_account, get_account
 from feljosit.services.categorise import Categoriser
 from feljosit.services.errors import ServiceError
 
@@ -28,6 +29,7 @@ class StatementResult:
     categorised_count: int = 0
     transfer_count: int = 0
     skipped_entries: int = 0
+    account_created: bool = False
     closing_balance_minor: int | None = None
     computed_balance_minor: int | None = None
 
@@ -51,9 +53,66 @@ class ImportResult:
         return sum(s.duplicate_count for s in self.statements)
 
 
-def _resolve_account(
-    db: Session, user_id: int, statement: camt053.Statement, account_id: int | None
+def _new_account_name(statement: camt053.Statement) -> str:
+    """The name for an account that the import makes.
+
+    Use the account name of the statement. Else use the bank name and the last four
+    characters of the IBAN. Else use the IBAN.
+    """
+    iban = statement.account_iban or ""
+    if statement.account_name:
+        name = statement.account_name
+    elif statement.servicer_name:
+        name = f"{statement.servicer_name} ···{iban[-4:]}"
+    else:
+        name = f"Account {format_iban(iban)}"
+    return name.strip()[:100]
+
+
+def _statement_currency(statement: camt053.Statement) -> str:
+    for currency in (
+        statement.currency,
+        *(b.currency for b in statement.balances),
+        *(t.currency for t in statement.transactions),
+    ):
+        if currency:
+            return currency
+    raise ServiceError("The statement has no currency. Add the account manually.")
+
+
+def _create_account_for(
+    db: Session, user_id: int, statement: camt053.Statement, budget_currency: str
 ) -> Account:
+    """Make a checking account for the IBAN of the statement.
+
+    The account is in the budget if it uses the budget currency. Else it is a
+    tracking account. The user can change the name and the type later.
+    """
+    currency = _statement_currency(statement)
+    return create_account(
+        db,
+        user_id,
+        name=_new_account_name(statement),
+        account_type=AccountType.CHECKING,
+        currency=currency,
+        budget_currency=budget_currency,
+        iban=statement.account_iban,
+        on_budget=currency == budget_currency,
+    )
+
+
+def _resolve_account(
+    db: Session,
+    user_id: int,
+    statement: camt053.Statement,
+    account_id: int | None,
+    budget_currency: str | None,
+) -> tuple[Account, bool]:
+    """Find the account of the statement. Return the account and ``True`` if it is new.
+
+    If no account is selected and no account has the IBAN of the statement, make an
+    account if ``budget_currency`` is given.
+    """
     by_iban: Account | None = None
     if statement.account_iban:
         by_iban = db.scalar(
@@ -62,18 +121,22 @@ def _resolve_account(
             )
         )
     if account_id is None:
-        if by_iban is None:
+        if by_iban is not None:
+            return by_iban, False
+        if statement.account_iban and budget_currency:
+            return _create_account_for(db, user_id, statement, budget_currency), True
+        if statement.account_iban:
             raise ServiceError(
                 "No account has the IBAN of the statement. Select an account or add the IBAN "
                 "to an account."
             )
-        return by_iban
+        raise ServiceError("The statement has no IBAN. Select the account.")
     account = get_account(db, user_id, account_id)
     if by_iban is not None and by_iban.id != account.id:
         raise ServiceError("The statement IBAN belongs to a different account.")
     if account.iban and statement.account_iban and account.iban != statement.account_iban:
         raise ServiceError("The statement IBAN is not the IBAN of the selected account.")
-    return account
+    return account, False
 
 
 def _check_account(account: Account, statement: camt053.Statement) -> None:
@@ -95,10 +158,13 @@ def import_statement_file(
     filename: str,
     data: bytes,
     account_id: int | None = None,
+    budget_currency: str | None = None,
 ) -> ImportResult:
     """Parse and import a camt.053 file (XML or ZIP).
 
-    The import is idempotent. The same file cannot be imported two times, and a
+    If ``account_id`` is ``None``, the IBAN of each statement gives the account. If
+    ``budget_currency`` is given and no account has the IBAN, the import makes a new
+    account. The import is idempotent. The same file cannot be imported two times, and a
     transaction that exists already (same fingerprint) is not added again.
     Raise :class:`ServiceError` or :class:`~feljosit.camt053.Camt053Error` on errors.
     """
@@ -119,11 +185,18 @@ def import_statement_file(
     db.add(batch)
     db.flush()
     result = ImportResult()
-    categoriser = Categoriser(db, user_id)
+    # Find or make all accounts first. Then a transfer to an account that this
+    # file makes is a transfer too.
+    targets = []
     for statement in statements:
-        account = _resolve_account(db, user_id, statement, account_id)
+        account, created = _resolve_account(db, user_id, statement, account_id, budget_currency)
         _check_account(account, statement)
-        result.statements.append(_import_statement(db, categoriser, batch, account, statement))
+        targets.append((statement, account, created))
+    categoriser = Categoriser(db, user_id)
+    for statement, account, created in targets:
+        item = _import_statement(db, categoriser, batch, account, statement)
+        item.account_created = created
+        result.statements.append(item)
     batch.new_count = result.new_count
     batch.duplicate_count = result.duplicate_count
     return result
