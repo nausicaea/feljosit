@@ -97,6 +97,18 @@ For a transfer between your accounts, select "Transfer". A transfer from a budge
 account to a tracking account (for example to pillar 3a) needs a category,
 because the money leaves the budget.
 
+## Procedure: show the account number of the counterparty
+
+1. Click "Transactions".
+2. Select "Show account numbers".
+
+Below the name of the counterparty, the list shows its IBAN, if the bank statement
+contains it. The option stays when you filter, go to a different page of the list,
+or change a transaction.
+
+The search also finds IBANs. Type a part of the IBAN with at least 4 characters
+and one digit, with or without spaces, for example "CH93 0076".
+
 ## Procedure: move a category into a different group
 
 1. Click "Categories".
