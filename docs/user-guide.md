@@ -115,11 +115,31 @@ For a transfer between your accounts, select "Transfer". A transfer from a budge
 account to a tracking account (for example to pillar 3a) needs a category,
 because the money leaves the budget.
 
+## Procedure: give one category to many transactions
+
+1. Click "Transactions".
+2. Filter the transactions. For example, type the name of your health insurance in
+   "Search", select "Outflows (−)" and type 300 in "Minimum amount".
+3. Select the checkbox of each transaction. Or select "Select all on this page".
+4. In "Category for the selected transactions", select a category.
+5. Click "Assign the category".
+
+The change is the same as a change of each transaction. If a transaction is in a
+transfer pair, the other transaction stops being a transfer too. Transactions in
+tracking accounts have no checkbox. You can select a maximum of 100 transactions,
+the transactions of one page.
+
 ## Procedure: filter the transactions
 
 1. Click "Transactions".
-2. Select an account, a category, or both. Or type a text in "Search" and click
+2. Select an account, a category, a direction, or more of them. Or type a text in
+   "Search" or an amount in "Minimum amount" or "Maximum amount". Then click
    "Filter".
+
+The amount filter compares the amount without its sign. For example, "Minimum
+amount" 300 shows an outflow of −450.00 and an inflow of 300.00. To see only
+outflows or only inflows, select a value in "Direction". The amount filter
+includes the limits.
 
 The list "Category" has these choices, in addition to each category:
 

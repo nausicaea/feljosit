@@ -25,17 +25,41 @@
       {% endfor %}
     </select>
   </label>
+  <label>Direction
+    <select name="direction" data-autosubmit-change>
+      <option value="">Outflows and inflows</option>
+      {% for value, label in directions.items() %}<option value="{{ value }}" {% if filter_direction == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Minimum amount <input name="min" value="{{ amount_min }}" maxlength="32" inputmode="decimal" size="9" placeholder="0.00"></label>
+  <label>Maximum amount <input name="max" value="{{ amount_max }}" maxlength="32" inputmode="decimal" size="9" placeholder="0.00"></label>
   <label class="check"><input type="checkbox" name="iban" value="true" {% if show_iban %}checked{% endif %} data-autosubmit-change> Show account numbers</label>
   <button type="submit">Filter</button>
   {% if filters_active %}<a href="/transactions{{ '?' ~ display_query if display_query }}">Remove the filters</a>{% endif %}
 </form>
 
-<p class="hint">{{ total }} transactions.</p>
+{% if amount_error %}<p class="flash error" role="alert">{{ amount_error }}</p>{% endif %}
+<p class="hint">{{ total }} transactions. The amount filter compares the amount without its sign.</p>
+{% if transactions %}
+<form method="post" action="/transactions/bulk-category" id="bulk" class="filters bulk">
+  {{ csrf() }}<input type="hidden" name="return_to" value="{{ return_to }}">
+  <label>Category for the selected transactions
+    <select name="category_id" required>
+      <option value="">Select a category</option>
+      {{ category_options(groups, include_transfer=True, uncategorised_value='none') }}
+    </select>
+  </label>
+  <label class="check" hidden data-select-all-label><input type="checkbox" data-select-all> Select all on this page</label>
+  <button type="submit">Assign the category</button>
+  <span class="hint" data-selected-count aria-live="polite"></span>
+</form>
+{% endif %}
 <table class="transactions">
-  <thead><tr><th scope="col">Date</th><th scope="col">Account</th><th scope="col">Counterparty and description</th><th scope="col">Category</th><th scope="col" class="num">Amount</th></tr></thead>
+  <thead><tr><th scope="col" class="tx-select"><span class="visually-hidden">Selection</span></th><th scope="col">Date</th><th scope="col">Account</th><th scope="col">Counterparty and description</th><th scope="col">Category</th><th scope="col" class="num">Amount</th></tr></thead>
   <tbody>
   {% for t in transactions %}
     <tr>
+      <td class="tx-select">{% if t.account.on_budget %}<input type="checkbox" name="tx_id" value="{{ t.id }}" form="bulk" aria-label="Select the transaction of {{ t.booking_date | swiss_date }}, {{ t.counterparty or '—' }}">{% endif %}</td>
       <td class="nowrap tx-date">{{ t.booking_date | swiss_date }}</td>
       <td class="tx-account">{{ t.account.name }}</td>
       <td class="tx-party">
@@ -74,7 +98,7 @@
       </td>
     </tr>
   {% else %}
-    <tr><td colspan="5">No transactions. <a href="/import">Import a statement</a>.</td></tr>
+    <tr><td colspan="6">No transactions. <a href="/import">Import a statement</a>.</td></tr>
   {% endfor %}
   </tbody>
 </table>

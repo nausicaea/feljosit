@@ -61,11 +61,11 @@ def to_minor(value: Decimal | str, currency: str) -> int:
     return int(scaled)
 
 
-def parse_user_amount(text: str, currency: str) -> int:
+def parse_user_decimal(text: str) -> Decimal:
     """Parse an amount that a person typed, for example ``1'234.50`` or ``-12``.
 
     The function accepts Swiss thousands separators (apostrophe, right single quote,
-    space) and a comma as the decimal separator.
+    space) and a comma as the decimal separator. The result has no currency.
     """
     cleaned = text.strip()
     for sep in ("'", "’", " ", " ", "_"):
@@ -74,7 +74,12 @@ def parse_user_amount(text: str, currency: str) -> int:
         cleaned = cleaned.replace(",", ".")
     if not _USER_AMOUNT_RE.fullmatch(cleaned):
         raise MoneyError(f"Amount is not valid: {text!r}")
-    return to_minor(Decimal(cleaned), currency)
+    return Decimal(cleaned)
+
+
+def parse_user_amount(text: str, currency: str) -> int:
+    """Parse an amount that a person typed (see :func:`parse_user_decimal`) to minor units."""
+    return to_minor(parse_user_decimal(text), currency)
 
 
 def format_minor(amount: int, currency: str, *, with_currency: bool = False) -> str:

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import math
 from datetime import date
+from decimal import Decimal
 from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import BeforeValidator
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, and_, false, func, or_, select
 
 from feljosit.iban import normalise_iban
 from feljosit.models import (
@@ -21,7 +23,7 @@ from feljosit.models import (
     TransferPair,
     TransferStatus,
 )
-from feljosit.money import MoneyError, parse_user_amount
+from feljosit.money import MoneyError, exponent, parse_user_amount, parse_user_decimal
 from feljosit.services import accounts, categorise, transfers
 from feljosit.services.errors import NotFoundError, ServiceError
 from feljosit.web.deps import CsrfAuth, CurrentAuth
@@ -95,6 +97,53 @@ def _category_filter(auth: CurrentAuth, category: str) -> list[ColumnElement[boo
     return []
 
 
+#: The values of the direction filter.
+DIRECTIONS = {"outflow": "Outflows (−)", "inflow": "Inflows (+)"}
+
+
+def _direction_filter(direction: str) -> list[ColumnElement[bool]]:
+    if direction == "outflow":
+        return [Transaction.amount_minor < 0]
+    if direction == "inflow":
+        return [Transaction.amount_minor > 0]
+    return []
+
+
+def _amount_limit(text: str) -> Decimal | None:
+    """Parse a limit of the amount filter. An empty text: no limit.
+
+    The limit applies to the amount without its sign. Raise :class:`MoneyError` if
+    the text is not an amount.
+    """
+    return abs(parse_user_decimal(text)) if text.strip() else None
+
+
+def _amount_filter(
+    auth: CurrentAuth, minimum: Decimal | None, maximum: Decimal | None
+) -> list[ColumnElement[bool]]:
+    """Compare the amount without its sign with the limits.
+
+    The limits are in the currency of each transaction. Thus the filter makes one
+    condition for each currency of the user.
+    """
+    if minimum is None and maximum is None:
+        return []
+    currencies = auth.db.scalars(
+        select(Transaction.currency).where(Transaction.user_id == auth.user.id).distinct()
+    )
+    size = func.abs(Transaction.amount_minor)
+    alternatives = []
+    for currency in currencies:
+        conditions = [Transaction.currency == currency]
+        exp = exponent(currency)
+        if minimum is not None:
+            conditions.append(size >= math.ceil(minimum.scaleb(exp)))
+        if maximum is not None:
+            conditions.append(size <= math.floor(maximum.scaleb(exp)))
+        alternatives.append(and_(*conditions))
+    return [or_(*alternatives)] if alternatives else [false()]
+
+
 @router.get("/transactions", response_class=HTMLResponse)
 def transactions_page(
     request: Request,
@@ -102,6 +151,9 @@ def transactions_page(
     account: OptionalId = None,
     category: Annotated[str, Query(max_length=20)] = "",
     q: Annotated[str, Query(max_length=100)] = "",
+    direction: Annotated[str, Query(max_length=10)] = "",
+    amount_min: Annotated[str, Query(alias="min", max_length=32)] = "",
+    amount_max: Annotated[str, Query(alias="max", max_length=32)] = "",
     page: Annotated[int, Query(ge=1, le=100_000)] = 1,
     iban: Annotated[bool, Query()] = False,
     uncategorised: Annotated[bool, Query()] = False,
@@ -109,7 +161,9 @@ def transactions_page(
 ) -> Response:
     """The transaction list.
 
-    ``category`` is a category ID or a value of ``CATEGORY_FILTERS``. ``iban`` shows
+    ``category`` is a category ID or a value of ``CATEGORY_FILTERS``. ``direction`` is
+    a value of ``DIRECTIONS``. ``min`` and ``max`` are limits for the amount without
+    its sign. ``iban`` shows
     the account number of the counterparty. ``uncategorised`` and ``matched`` are the
     parameters of older links. They are the same as ``category=uncategorised`` and
     ``category=matched``.
@@ -124,6 +178,21 @@ def transactions_page(
     if account is not None:
         filters.append(Transaction.account_id == account)
     filters += _category_filter(auth, category)
+    if direction not in DIRECTIONS:
+        direction = ""
+    filters += _direction_filter(direction)
+    amount_error = None
+    try:
+        minimum, maximum = _amount_limit(amount_min), _amount_limit(amount_max)
+    except MoneyError:
+        amount_error = (
+            "The amount filter is not valid. Type an amount, for example 300 or 1'250.50."
+        )
+        minimum = maximum = None
+        amount_min = amount_max = ""
+    if minimum is not None and maximum is not None and minimum > maximum:
+        amount_error = "The minimum amount is more than the maximum amount."
+    filters += _amount_filter(auth, minimum, maximum)
     if q.strip():
         pattern = f"%{_escape_like(q.strip())}%"
         conditions = [
@@ -161,6 +230,9 @@ def transactions_page(
             "account": account,
             "category": category or None,
             "q": q or None,
+            "direction": direction or None,
+            "min": amount_min.strip() or None,
+            "max": amount_max.strip() or None,
         }.items()
         if v is not None
     }
@@ -186,12 +258,28 @@ def transactions_page(
         filter_category=category,
         category_filters=CATEGORY_FILTERS,
         q=q,
+        filter_direction=direction,
+        directions=DIRECTIONS,
+        amount_min=amount_min.strip(),
+        amount_max=amount_max.strip(),
+        amount_error=amount_error,
         today=date.today().isoformat(),
     )
 
 
 #: Query parameters that the transaction list accepts. A redirect keeps only these.
-_LIST_PARAMS = ("account", "category", "uncategorised", "q", "page", "matched", "iban")
+_LIST_PARAMS = (
+    "account",
+    "category",
+    "uncategorised",
+    "q",
+    "direction",
+    "min",
+    "max",
+    "page",
+    "matched",
+    "iban",
+)
 
 
 def _back(return_to: str) -> RedirectResponse:
@@ -231,6 +319,67 @@ def set_category(
     except (ServiceError, ValueError) as exc:
         message = str(exc) if isinstance(exc, ServiceError) else "The category is not valid."
         auth.flash(message, error=True)
+    return _back(return_to)
+
+
+@router.post("/transactions/bulk-category")
+def set_category_bulk(
+    auth: CsrfAuth,
+    tx_id: Annotated[list[int] | None, Form()] = None,
+    category_id: Annotated[str, Form(max_length=20)] = "",
+    return_to: Annotated[str, Form(max_length=500)] = "/transactions",
+) -> Response:
+    """Give one category to the selected transactions.
+
+    ``category_id`` is a category ID, ``none`` (uncategorised) or ``transfer``. The
+    changes are the same as the changes of :func:`set_category` for each transaction.
+    Transactions in tracking accounts have no category. The function does not change
+    them.
+    """
+    ids = list(dict.fromkeys(tx_id or []))
+    if not ids:
+        auth.flash("Select one or more transactions.", error=True)
+        return _back(return_to)
+    if len(ids) > PAGE_SIZE:
+        auth.flash(f"Select a maximum of {PAGE_SIZE} transactions.", error=True)
+        return _back(return_to)
+    to_transfer = category_id == "transfer"
+    target: int | None = None
+    if not to_transfer and category_id != "none":
+        if not category_id.isdigit():
+            auth.flash("Select a category.", error=True)
+            return _back(return_to)
+        target = categorise.owned_category(auth.db, auth.user.id, int(category_id)).id
+    selected = list(
+        auth.db.scalars(
+            select(Transaction).where(Transaction.user_id == auth.user.id, Transaction.id.in_(ids))
+        )
+    )
+    if len(selected) != len(ids):
+        raise NotFoundError("transaction")
+    changed = tracking = 0
+    partners: list[Transaction] = []
+    for tx in selected:
+        if not tx.account.on_budget:
+            tracking += 1
+            continue
+        if to_transfer:
+            tx.category_id = None
+            tx.is_transfer = True
+        else:
+            partner = categorise.set_category(auth.db, tx, target)
+            if partner is not None and partner.id not in ids:
+                partners.append(partner)
+        changed += 1
+    messages = [f"The category of {changed} transactions is changed."]
+    if tracking:
+        messages.append(f"{tracking} transactions are in tracking accounts. They have no category.")
+    if partners:
+        messages.append(
+            f"{len(partners)} other transactions are not transfers any more. "
+            "Give a category to them too. Select 'Uncategorised' in the category filter."
+        )
+    auth.flash(" ".join(messages))
     return _back(return_to)
 
 

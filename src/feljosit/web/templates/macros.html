@@ -39,8 +39,8 @@
 </svg>
 {% endmacro %}
 
-{% macro category_options(groups, selected=None, include_transfer=False) %}
-<option value="">— Uncategorised —</option>
+{% macro category_options(groups, selected=None, include_transfer=False, uncategorised_value='') %}
+<option value="{{ uncategorised_value }}">— Uncategorised —</option>
 {% if include_transfer %}<option value="transfer">⇄ Transfer (no category)</option>{% endif %}
 {% for g in groups %}
 <optgroup label="{{ g.name }}">
