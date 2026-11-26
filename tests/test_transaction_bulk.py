@@ -231,3 +231,92 @@ def test_page_has_the_bulk_form(client: Client, data: dict[str, int]) -> None:
     assert f'name="tx_id" value="{data["premium"]}" form="bulk"' in page
     # A tracking account has no category, and thus no checkbox.
     assert f'name="tx_id" value="{data["deposit"]}"' not in page
+
+
+def _bulk_all(
+    http: TestClient, token: str, filters: dict[str, str], expected: int, category: str
+) -> str:
+    """Send "Select all matching transactions" with the filters of the page."""
+    response = http.post(
+        "/transactions/bulk-category",
+        data={
+            "csrf_token": token,
+            "scope": "all",
+            "expected": str(expected),
+            "category_id": category,
+            "return_to": "/transactions?page=1",
+            **filters,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    return http.get(response.headers["location"]).text
+
+
+def test_page_offers_all_matching_transactions(client: Client, data: dict[str, int]) -> None:
+    http, _ = client
+    # 7 transactions. The deposit is in a tracking account.
+    page = http.get("/transactions").text
+    assert "Select all 6 matching transactions" in page
+    page = http.get("/transactions", params={"direction": "outflow", "min": "300"}).text
+    assert "Select all 3 matching transactions" in page
+    assert '<input type="hidden" name="expected" value="3">' in page
+    assert '<input type="hidden" name="direction" value="outflow">' in page
+    assert '<input type="hidden" name="min" value="300">' in page
+    page = http.get("/transactions", params={"q": "Deposit"}).text
+    assert "matching transactions" not in page
+
+
+def test_bulk_category_of_all_matching_transactions(
+    client: Client, app: FastAPI, data: dict[str, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scope "all" ignores the checkboxes of the rows and the limit of one page."""
+    monkeypatch.setattr("feljosit.web.routes.transactions.PAGE_SIZE", 2)
+    http, token = client
+    page = _bulk_all(
+        http,
+        token,
+        {"direction": "outflow", "min": "300", "tx_id": str(data["small"])},
+        3,
+        str(data["category"]),
+    )
+    assert "The category of 3 transactions is changed." in page
+    assert "1 other transactions are not transfers any more." in page
+    for name in ("premium", "deductible", "card_payment"):
+        assert _state(app, data[name]) == (data["category"], False)
+    assert _state(app, data["small"]) == (None, False)
+    assert _state(app, data["payment"]) == (None, False)
+
+
+def test_bulk_category_of_all_skips_tracking_accounts(
+    client: Client, app: FastAPI, data: dict[str, int]
+) -> None:
+    http, token = client
+    page = _bulk_all(http, token, {}, 6, "none")
+    assert "The category of 6 transactions is changed." in page
+    assert "tracking accounts" not in page
+    assert _state(app, data["deposit"]) == (None, False)
+
+
+@pytest.mark.parametrize(
+    ("filters", "expected", "message"),
+    [
+        ({"direction": "outflow", "min": "300"}, 2, "The matching transactions changed"),
+        ({"direction": "outflow", "min": "300"}, 4, "The matching transactions changed"),
+        ({"min": "abc"}, 6, "The amount filter is not valid."),
+        ({"min": "500", "max": "100"}, 0, "The minimum amount is more than the maximum"),
+        ({"q": "Deposit"}, 0, "Select one or more transactions."),
+    ],
+)
+def test_bulk_category_of_all_errors(
+    client: Client,
+    app: FastAPI,
+    data: dict[str, int],
+    filters: dict[str, str],
+    expected: int,
+    message: str,
+) -> None:
+    http, token = client
+    page = _bulk_all(http, token, filters, expected, str(data["category"]))
+    assert message in page
+    assert _state(app, data["premium"]) == (None, False)
