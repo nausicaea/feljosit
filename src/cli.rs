@@ -246,6 +246,9 @@ fn open_browser(url: &str) -> io::Result<()> {
 
 /// Start the web server. This function returns when the user stops the server.
 pub fn run_server(settings: Settings, options: ServeOptions) -> Result<(), String> {
+    // Install the stop handler first. A signal before the accept loop then also stops
+    // the server normally (the log line "runs at" tells that the server is ready).
+    crate::shutdown::Stop::install().map_err(|e| format!("Cannot install the stop handler: {e}"))?;
     let url = browser_url(&options.host, options.port);
     let address = if options.host.contains(':') {
         format!("[{}]:{}", options.host, options.port)
