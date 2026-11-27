@@ -11,10 +11,11 @@ use std::net::{TcpListener, TcpStream};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::{App, Request, Response};
 use crate::db::log;
+use crate::shutdown::{Event, Stop};
 
 /// The maximum number of connections at the same time.
 const MAX_CONNECTIONS: usize = 64;
@@ -25,19 +26,31 @@ const MAX_HEADERS: usize = 100;
 /// The time limit for one read or write operation on the connection.
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Serve the application on the listener. The function returns only if the listener
-/// has an error. Ctrl+C stops the process: SQLite keeps the database consistent.
+/// The maximum time to wait for the active connections after a stop signal.
+const STOP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Serve the application on the listener. The function returns after a stop signal
+/// (`SIGTERM` or `SIGINT` on Unix, see [`crate::shutdown`]) or if the listener has an
+/// error. On other systems, Ctrl+C stops the process: SQLite keeps the database consistent.
 pub fn serve(app: Arc<App>, listener: TcpListener) -> io::Result<()> {
+    let stop = Stop::install()?;
+    stop.prepare(&listener)?;
     let active = Arc::new(AtomicUsize::new(0));
-    for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(stream) => stream,
-            Err(error) => {
-                // For example "too many open files". Continue with the next connection.
-                log::warning(&format!("Cannot accept a connection: {error}"));
-                continue;
-            }
-        };
+    loop {
+        if stop.wait(&listener)? == Event::Stop {
+            break;
+        }
+        let stream =
+            match listener.accept().and_then(|(stream, _)| stream.set_nonblocking(false).map(|()| stream)) {
+                Ok(stream) => stream,
+                // The client closed the connection before the accept.
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(error) => {
+                    // For example "too many open files". Continue with the next connection.
+                    log::warning(&format!("Cannot accept a connection: {error}"));
+                    continue;
+                }
+            };
         if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
             active.fetch_sub(1, Ordering::SeqCst);
             let _ = write_response(&stream, &Response::text(503, "Too many connections"), false);
@@ -52,6 +65,16 @@ pub fn serve(app: Arc<App>, listener: TcpListener) -> io::Result<()> {
         if let Err(error) = spawned {
             log::warning(&format!("Cannot start a thread for a connection: {error}"));
         }
+    }
+    log::info("The server stops.");
+    drop(listener);
+    let deadline = Instant::now() + STOP_TIMEOUT;
+    while active.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let remaining = active.load(Ordering::SeqCst);
+    if remaining > 0 {
+        log::warning(&format!("{remaining} connections did not complete in time."));
     }
     Ok(())
 }

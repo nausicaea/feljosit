@@ -60,7 +60,8 @@ contains the web server, the database engine (SQLite) and all pages.
    - macOS and Linux: open a terminal in the folder and type the name of the file,
      for example `./feljosit-VERSION-macos-aarch64`.
 4. The browser opens <http://127.0.0.1:8765>. At the first start, add your user.
-5. To stop Feljosit, close its window or press Ctrl+C in the terminal.
+5. To stop Feljosit, close its window or press Ctrl+C in the terminal. On macOS and
+   Linux, the server also stops on the signal `SIGTERM`.
 
 For the next steps, read the [user guide](docs/user-guide.md).
 
@@ -77,7 +78,7 @@ the user `nonroot` (UID 65532). The database is in the volume `/data`.
 1. Start the container:
 
    ```bash
-   docker run --detach --init --name feljosit --publish 127.0.0.1:8765:8765 --volume feljosit-data:/data ghcr.io/nausicaea/feljosit:VERSION
+   docker run --detach --name feljosit --publish 127.0.0.1:8765:8765 --volume feljosit-data:/data ghcr.io/nausicaea/feljosit:VERSION
    ```
 
 2. Add the first user. The command asks for a password:
@@ -90,8 +91,8 @@ the user `nonroot` (UID 65532). The database is in the volume `/data`.
 4. To stop the container, type `docker stop feljosit`.
 
 The browser cannot add the first user in a container (see
-[ADR-0022](docs/adr/0022-signed-container-image.md)). The option `--init` lets
-`docker stop` stop the server immediately.
+[ADR-0022](docs/adr/0022-signed-container-image.md)). On `docker stop`, the server
+completes the open requests (maximum 5 seconds), closes the database and stops.
 
 With Docker Compose, use this file `compose.yaml`:
 
@@ -99,7 +100,6 @@ With Docker Compose, use this file `compose.yaml`:
 services:
   feljosit:
     image: ghcr.io/nausicaea/feljosit:VERSION
-    init: true
     ports:
       - "127.0.0.1:8765:8765"
     volumes:

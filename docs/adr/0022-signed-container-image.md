@@ -55,6 +55,9 @@ We use option 3:
 - Bad: In a container, the connection from the host comes from the bridge address,
   not from a loopback address. Thus the first user cannot be added in the browser
   (ADR-0019). The user must use `docker exec -it NAME feljosit create-user USER`.
-- Bad: The process has PID 1 and does not stop on `SIGTERM`. The users must start
-  the container with `--init` (or `init: true` in Compose) for a fast stop.
+- Good: The application is process 1 of the container. The kernel ignores a signal
+  for process 1 without a handler. Thus Feljosit has a handler for `SIGTERM` and
+  `SIGINT` (`src/shutdown.rs`). The server stops to accept connections, waits a
+  maximum of 5 seconds for the open requests and closes the database. A second
+  signal stops the process immediately. `docker stop` needs no `--init`.
 - Bad: The keyless signature needs the public Sigstore services (Fulcio and Rekor).

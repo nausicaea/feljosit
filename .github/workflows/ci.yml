@@ -53,7 +53,7 @@ jobs:
       - name: Test the image
         run: |
           docker run --rm feljosit:ci --version
-          docker run --detach --init --name feljosit --publish 127.0.0.1:8765:8765 feljosit:ci
+          docker run --detach --name feljosit --publish 127.0.0.1:8765:8765 feljosit:ci
           for _ in 1 2 3 4 5 6 7 8 9 10; do
             status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8765/ || true)
             [ "$status" = "303" ] && break
@@ -62,7 +62,9 @@ jobs:
           docker logs feljosit
           [ "$status" = "303" ]
           test "$(docker inspect --format '{{.Config.User}}' feljosit:ci)" = "65532:65532"
-          docker stop feljosit
+          # The server must stop on SIGTERM as process 1 (exit code 0, not 137 for SIGKILL).
+          docker stop --timeout 5 feljosit
+          test "$(docker inspect --format '{{.State.ExitCode}}' feljosit)" = "0"
 
   audit:
     name: Dependency audit

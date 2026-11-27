@@ -13,6 +13,7 @@ pub mod iban;
 pub mod models;
 pub mod money;
 pub mod services;
+pub mod shutdown;
 pub mod terminal;
 pub mod web;
 
