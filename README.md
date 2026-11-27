@@ -6,9 +6,13 @@ It imports ISO 20022 camt.053 bank statements from Swiss banks.
 
 Your data stays on your computer. The application sends no data to a cloud service.
 
-> **An AI wrote this project.** Claude, an AI model of Anthropic, wrote all the
-> source code, the tests and the documentation of Feljosit with Claude Code.
-> See [Authorship](#authorship).
+> [!NOTE]
+> **Claude wrote this project almost entirely.** Claude is an AI model from Anthropic. Claude wrote
+> almost all of the code, the tests, the Docker files and the documentation in Claude Code
+> sessions. A human gave the requirements, examined the results and merged the changes.
+>
+> - Model: Claude Opus 5.5 (`claude-opus-5-5`), through Claude Code
+> - See [Authorship](#authorship).
 
 ## Features
 
