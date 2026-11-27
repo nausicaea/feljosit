@@ -1,5 +1,7 @@
-//! The Rust version uses the database of the Python version (Feljosit 0.3.0) without a
-//! change. The fixture is a dump of a database that the Python version made.
+//! The Rust version uses the database of the Python version (Feljosit 0.3.0). The
+//! Python version made revision 0002. The Rust version upgrades it with the
+//! migrations after 0002 (ADR-0024). The fixture is a dump of a database that the
+//! Python version made.
 
 mod common;
 
@@ -22,8 +24,9 @@ fn the_python_database_works() {
     let settings = feljosit::config::Settings::new(dir.path().to_path_buf());
     python_database(&settings.database_path());
     let mut conn = db::open(&settings).unwrap();
-    assert_eq!(db::current_revision(&conn).unwrap().as_deref(), Some(db::head_revision()));
+    assert_eq!(db::current_revision(&conn).unwrap().as_deref(), Some("0002"));
     db::migrate(&mut conn).unwrap();
+    assert_eq!(db::current_revision(&conn).unwrap().as_deref(), Some(db::head_revision()));
     let balances = accounts::balances(&conn, 1).unwrap();
     assert_eq!(balances[&1], 425005);
 

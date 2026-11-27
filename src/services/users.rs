@@ -15,8 +15,15 @@ use crate::models::User;
 
 pub const MIN_PASSWORD_LENGTH: usize = 12;
 pub const MAX_PASSWORD_LENGTH: usize = 1024;
+/// Failed logins for one user from one client before the lock (ADR-0024).
 pub const MAX_FAILED_LOGINS: i64 = 5;
+/// Failed logins for one user from all clients together before the lock of the user.
+/// This limit stops an attacker with many addresses. It is high, thus one device
+/// cannot lock the user for the other devices.
+pub const MAX_FAILED_LOGINS_ALL_CLIENTS: i64 = 50;
 pub const LOCKOUT_MINUTES: i64 = 15;
+/// The failed logins of a client without a lock are forgotten after this time.
+const FAILURE_MEMORY_SECONDS: i64 = 24 * 60 * 60;
 
 /// Argon2id parameters: memory in KiB, iterations, lanes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,10 +209,11 @@ pub fn create_user(conn: &Connection, username: &str, password: &str) -> Result<
     Ok(User::by_id(conn, id)?.expect("The user was just added"))
 }
 
+/// Set a new password chosen by the user. The password is not temporary.
 pub fn change_password(conn: &Connection, user_id: i64, new_password: &str) -> Result<()> {
     validate_password(new_password)?;
     conn.execute(
-        "UPDATE users SET password_hash = ?1 WHERE id = ?2",
+        "UPDATE users SET password_hash = ?1, must_change_password = 0 WHERE id = ?2",
         params![hash_password(new_password), user_id],
     )?;
     // Log out all sessions of the user.
@@ -213,12 +221,28 @@ pub fn change_password(conn: &Connection, user_id: i64, new_password: &str) -> R
     Ok(())
 }
 
-/// Return the user if the credentials are correct.
+/// Mark the password of the user as temporary (or not). A user with a temporary
+/// password must change it before other pages open (ADR-0024).
+pub fn set_temporary_password(conn: &Connection, user_id: i64, temporary: bool) -> Result<()> {
+    conn.execute("UPDATE users SET must_change_password = ?1 WHERE id = ?2", params![temporary, user_id])?;
+    Ok(())
+}
+
+fn locked(until: Option<&str>) -> bool {
+    until.and_then(parse_datetime).is_some_and(|t| t > now())
+}
+
+/// Return the user if the credentials are correct. `client` identifies the device
+/// (see [`crate::net::client_key`]).
 ///
 /// The function always calculates one Argon2 hash. Thus the response time does not
-/// show if the username exists. After [`MAX_FAILED_LOGINS`] failures, the account is
-/// locked for [`LOCKOUT_MINUTES`] minutes.
-pub fn authenticate(conn: &Connection, username: &str, password: &str) -> Result<Option<User>> {
+/// show if the username exists or if the user is locked. Two limits apply (ADR-0024):
+///
+/// - After [`MAX_FAILED_LOGINS`] failures from one client, the user is locked for
+///   [`LOCKOUT_MINUTES`] minutes for that client only.
+/// - After [`MAX_FAILED_LOGINS_ALL_CLIENTS`] failures from all clients, the user is
+///   locked for [`LOCKOUT_MINUTES`] minutes for all clients.
+pub fn authenticate(conn: &Connection, username: &str, password: &str, client: &str) -> Result<Option<User>> {
     if password.chars().count() > MAX_PASSWORD_LENGTH {
         return Ok(None);
     }
@@ -226,24 +250,25 @@ pub fn authenticate(conn: &Connection, username: &str, password: &str) -> Result
         verify_password(dummy_hash(), password);
         return Ok(None);
     };
-    let locked = user.locked_until.as_deref().and_then(parse_datetime).is_some_and(|t| t > now());
-    if locked {
+    forget_old_failures(conn)?;
+    let client_lock: Option<String> = conn
+        .query_row(
+            "SELECT locked_until FROM login_failures WHERE user_id = ?1 AND client = ?2",
+            params![user.id, client],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+    if locked(user.locked_until.as_deref()) || locked(client_lock.as_deref()) {
         verify_password(dummy_hash(), password);
         return Ok(None);
     }
     if !verify_password(&user.password_hash, password) {
-        let failed = user.failed_logins + 1;
-        if failed >= MAX_FAILED_LOGINS {
-            conn.execute(
-                "UPDATE users SET failed_logins = 0, locked_until = ?1 WHERE id = ?2",
-                params![datetime_text(dates::add_seconds(now(), LOCKOUT_MINUTES * 60)), user.id],
-            )?;
-        } else {
-            conn.execute("UPDATE users SET failed_logins = ?1 WHERE id = ?2", params![failed, user.id])?;
-        }
+        record_failure(conn, &user, client)?;
         return Ok(None);
     }
     conn.execute("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?1", [user.id])?;
+    conn.execute("DELETE FROM login_failures WHERE user_id = ?1 AND client = ?2", params![user.id, client])?;
     if needs_rehash(&user.password_hash) {
         conn.execute(
             "UPDATE users SET password_hash = ?1 WHERE id = ?2",
@@ -253,12 +278,52 @@ pub fn authenticate(conn: &Connection, username: &str, password: &str) -> Result
     Ok(User::by_id(conn, user.id)?)
 }
 
-/// Set a new password from the command line. This also removes the lock.
-pub fn reset_password(conn: &Connection, username: &str, password: &str) -> Result<()> {
+fn record_failure(conn: &Connection, user: &User, client: &str) -> Result<()> {
+    let lock_until = datetime_text(dates::add_seconds(now(), LOCKOUT_MINUTES * 60));
+    let failed = user.failed_logins + 1;
+    if failed >= MAX_FAILED_LOGINS_ALL_CLIENTS {
+        conn.execute(
+            "UPDATE users SET failed_logins = 0, locked_until = ?1 WHERE id = ?2",
+            params![lock_until, user.id],
+        )?;
+    } else {
+        conn.execute("UPDATE users SET failed_logins = ?1 WHERE id = ?2", params![failed, user.id])?;
+    }
+    conn.execute(
+        "INSERT INTO login_failures (user_id, client, failed_logins, locked_until, updated_at) \
+         VALUES (?1, ?2, 1, NULL, ?3) \
+         ON CONFLICT (user_id, client) DO UPDATE SET \
+         failed_logins = failed_logins + 1, updated_at = excluded.updated_at",
+        params![user.id, client, now_text()],
+    )?;
+    conn.execute(
+        "UPDATE login_failures SET failed_logins = 0, locked_until = ?3 \
+         WHERE user_id = ?1 AND client = ?2 AND failed_logins >= ?4",
+        params![user.id, client, lock_until, MAX_FAILED_LOGINS],
+    )?;
+    Ok(())
+}
+
+/// Delete the failed logins of clients without a lock after one day. Thus the table
+/// stays small.
+fn forget_old_failures(conn: &Connection) -> Result<()> {
+    let before = datetime_text(dates::add_seconds(now(), -FAILURE_MEMORY_SECONDS));
+    conn.execute(
+        "DELETE FROM login_failures WHERE updated_at < ?1 AND (locked_until IS NULL OR locked_until < ?2)",
+        params![before, now_text()],
+    )?;
+    Ok(())
+}
+
+/// Set a new password from the command line. This also removes all locks of the
+/// user. A `temporary` password must be changed at the next login.
+pub fn reset_password(conn: &Connection, username: &str, password: &str, temporary: bool) -> Result<()> {
     let user = User::by_username(conn, &username.trim().to_lowercase())?
         .ok_or_else(|| Error::service("The user does not exist."))?;
     change_password(conn, user.id, password)?;
+    set_temporary_password(conn, user.id, temporary)?;
     conn.execute("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE id = ?1", [user.id])?;
+    conn.execute("DELETE FROM login_failures WHERE user_id = ?1", [user.id])?;
     Ok(())
 }
 

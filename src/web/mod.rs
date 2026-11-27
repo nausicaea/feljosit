@@ -20,6 +20,8 @@ pub use http::{Cookie, Params, Request, Response, Upload};
 pub const SESSION_COOKIE: &str = "feljosit_session";
 pub const LOGIN_CSRF_COOKIE: &str = "feljosit_login_csrf";
 pub const SETUP_CSRF_COOKIE: &str = "feljosit_setup_csrf";
+/// The only pages for a user with a temporary password (ADR-0024).
+const PASSWORD_CHANGE_PATHS: &[&str] = &["/settings", "/settings/password", "/logout"];
 /// Space for form fields in addition to the uploaded file.
 pub const FORM_OVERHEAD_BYTES: usize = 64 * 1024;
 
@@ -49,6 +51,8 @@ const STATIC_FILES: &[(&str, &str, &[u8])] = &[
 pub enum AppError {
     /// The request needs a logged-in user.
     LoginRequired,
+    /// The user has a temporary password and must change it first (ADR-0024).
+    PasswordChangeRequired,
     /// The CSRF token or the Origin header is not correct.
     Csrf,
     NotFound,
@@ -119,6 +123,18 @@ impl App {
     pub fn with_db<T>(&self, f: impl FnOnce(&mut Connection) -> T) -> T {
         let mut conn = self.conn.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         f(&mut conn)
+    }
+
+    /// The address of the client. Behind a trusted reverse proxy, the address comes
+    /// from `X-Forwarded-For` (see [`crate::net::client_address`]).
+    pub fn client_address(&self, req: &Request) -> Option<std::net::IpAddr> {
+        let forwarded: Vec<&str> = req
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("x-forwarded-for"))
+            .map(|(_, value)| value.as_str())
+            .collect();
+        crate::net::client_address(req.peer, &forwarded, &self.settings.trusted_proxies)
     }
 
     /// The maximum size of a request body.
@@ -204,6 +220,7 @@ fn internal_error(message: &str) -> Response {
 fn error_response(error: AppError) -> Response {
     match error {
         AppError::LoginRequired => Response::redirect("/login"),
+        AppError::PasswordChangeRequired => Response::redirect("/settings"),
         AppError::Csrf => Response::text(403, "CSRF validation failed"),
         AppError::NotFound => Response::text(404, "Not found"),
         // Do not echo the input back to the client.
@@ -228,11 +245,20 @@ impl Ctx<'_> {
         Ok(self.form.as_ref().expect("The form is parsed"))
     }
 
-    /// The logged-in user. Else stop with a redirect to the login page.
+    /// The key of the client for the login limits (see [`crate::net::client_key`]).
+    pub fn client_key(&self) -> String {
+        crate::net::client_key(self.app.client_address(self.req))
+    }
+
+    /// The logged-in user. Else stop with a redirect to the login page. A user with a
+    /// temporary password can only open the pages to change the password and to log out.
     pub fn auth(&self) -> Result<Auth> {
         let token = self.req.cookie(SESSION_COOKIE).unwrap_or_default();
         let session = users::load_session(self.db, &token)?.ok_or(AppError::LoginRequired)?;
         let user = User::by_id(self.db, session.user_id)?.ok_or(AppError::LoginRequired)?;
+        if user.must_change_password && !PASSWORD_CHANGE_PATHS.contains(&self.req.path.as_str()) {
+            return Err(AppError::PasswordChangeRequired);
+        }
         Ok(Auth { user, session })
     }
 

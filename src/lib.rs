@@ -12,6 +12,7 @@ pub mod encoding;
 pub mod iban;
 pub mod models;
 pub mod money;
+pub mod net;
 pub mod services;
 pub mod shutdown;
 pub mod terminal;

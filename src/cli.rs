@@ -21,13 +21,17 @@ Usage:
       --port PORT                 Port (default: 8765).
       --open                      Open the browser.
   feljosit migrate                Upgrade the database schema.
-  feljosit create-user USERNAME   Add a user.
-  feljosit set-password USERNAME  Set a new password for a user.
+  feljosit create-user USERNAME   Add a user with a temporary password.
+  feljosit set-password USERNAME  Set a new temporary password for a user.
+      --permanent                 The password is not temporary. Without this
+                                  option, the user must change the password at
+                                  the next login.
   feljosit --version              Show the version.
   feljosit --help                 Show this help.
 
 Environment variables: FELJOSIT_DATA_DIR, FELJOSIT_HOST, FELJOSIT_PORT,
-FELJOSIT_ALLOWED_HOSTS, FELJOSIT_SECURE_COOKIES. See the README.
+FELJOSIT_ALLOWED_HOSTS, FELJOSIT_SECURE_COOKIES, FELJOSIT_TRUSTED_PROXIES.
+See the README.
 ";
 
 /// The input and the output of a command (the tests replace them).
@@ -50,8 +54,9 @@ pub struct ServeOptions {
 enum Command {
     Serve(Option<String>, Option<u16>, bool),
     Migrate,
-    CreateUser(String),
-    SetPassword(String),
+    /// The username, and true for a temporary password.
+    CreateUser(String, bool),
+    SetPassword(String, bool),
     Help,
     Version,
 }
@@ -61,16 +66,25 @@ fn parse(args: &[String]) -> Result<Command, String> {
         return Ok(Command::Serve(None, None, true));
     };
     let rest = &args[1..];
-    let one_name = |command: &str| match rest {
-        [name] if !name.starts_with('-') => Ok(name.clone()),
-        _ => Err(format!("The command {command} needs one username.")),
+    // One username and the option --permanent, in any sequence.
+    let user_command = |command: &str| {
+        let permanent = rest.iter().any(|arg| arg == "--permanent");
+        let names: Vec<&String> = rest.iter().filter(|arg| *arg != "--permanent").collect();
+        match names.as_slice() {
+            [name] if !name.starts_with('-') => Ok(((*name).clone(), !permanent)),
+            _ => Err(format!("The command {command} needs one username.")),
+        }
     };
     match first.as_str() {
         "-h" | "--help" | "help" => Ok(Command::Help),
         "-V" | "--version" => Ok(Command::Version),
         "migrate" if rest.is_empty() => Ok(Command::Migrate),
-        "create-user" => one_name("create-user").map(Command::CreateUser),
-        "set-password" => one_name("set-password").map(Command::SetPassword),
+        "create-user" => {
+            user_command("create-user").map(|(name, temporary)| Command::CreateUser(name, temporary))
+        }
+        "set-password" => {
+            user_command("set-password").map(|(name, temporary)| Command::SetPassword(name, temporary))
+        }
         "serve" => {
             let (mut host, mut port, mut open) = (None, None, false);
             let mut iter = rest.iter();
@@ -114,25 +128,29 @@ fn admin_command(command: &Command, settings: &Settings, io: &mut Io<'_>) -> Res
     let mut conn = db::open(settings)?;
     db::migrate(&mut conn)?;
     db::restrict_database_file(settings).map_err(|e| e.to_string())?;
-    let (create, username) = match command {
+    let (create, username, temporary) = match command {
         Command::Migrate => {
             let _ = writeln!(io.out, "The database schema is up to date.");
             return Ok(());
         }
-        Command::CreateUser(name) => (true, name),
-        Command::SetPassword(name) => (false, name),
+        Command::CreateUser(name, temporary) => (true, name, *temporary),
+        Command::SetPassword(name, temporary) => (false, name, *temporary),
         _ => unreachable!("only the administration commands"),
     };
     let password = read_new_password(io).map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     if create {
         let user = users::create_user(&tx, username, &password).map_err(|e| e.to_string())?;
+        users::set_temporary_password(&tx, user.id, temporary).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         let _ = writeln!(io.out, "The user '{}' is added.", user.username);
     } else {
-        users::reset_password(&tx, username, &password).map_err(|e| e.to_string())?;
+        users::reset_password(&tx, username, &password, temporary).map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         let _ = writeln!(io.out, "The password is changed.");
+    }
+    if temporary {
+        let _ = writeln!(io.out, "The password is temporary. The user must change it at the next login.");
     }
     Ok(())
 }

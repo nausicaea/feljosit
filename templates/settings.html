@@ -3,6 +3,9 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <h1>Settings</h1>
+{% if must_change_password %}
+<p class="flash warn" role="alert">Your password is temporary. Change it now. The other pages open after the change.</p>
+{% endif %}
 <section class="card narrow">
   <h2>Change the password</h2>
   <form method="post" action="/settings/password" class="stack">

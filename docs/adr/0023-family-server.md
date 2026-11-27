@@ -3,7 +3,7 @@
 - Status: Proposed
 - Date: 2026-11-27
 - Supersedes: the deployment model of ADR-0002 ("the data stays on the computer of the user")
-- Related: ADR-0007, ADR-0015, ADR-0019, ADR-0021, ADR-0022
+- Related: ADR-0007, ADR-0015, ADR-0019, ADR-0021, ADR-0022, ADR-0024
 
 ## Context
 
@@ -57,8 +57,9 @@ The rules for a family server:
   `127.0.0.1` (or the container port is published only on `127.0.0.1`).
 - The operator sets `FELJOSIT_SECURE_COOKIES=true` and `FELJOSIT_ALLOWED_HOSTS`.
 - The operator adds each user with the command line and gives a temporary
-  password. The user changes the password at the first login. The application
-  does not force this change. Thus the operator must tell the user.
+  password. The user must change the password at the first login (ADR-0024).
+- The operator sets `FELJOSIT_TRUSTED_PROXIES` to the address of the reverse proxy.
+  Then the limits for each client apply to each device (ADR-0024).
 - The operator uses full-disk encryption on the server and encrypted backups.
 - [The operator guide](../operator-guide.md) gives the procedures.
 
@@ -70,8 +71,9 @@ The threat model (docs/threat-model.md) describes the threats of both models.
 - Good: The data stays in the home of the family. No cloud service gets the data.
 - Good: One person makes the updates and the backups for all users.
 - Bad: More devices can connect to the server. A device on the home network can
-  guess passwords, lock accounts (5 failed logins) or open many slow connections.
-  The reverse proxy and the lockout decrease these risks, but do not remove them.
+  guess passwords, try to lock accounts or open many slow connections. The limits
+  for each client (ADR-0024) and the reverse proxy decrease these risks, but do not
+  remove them.
 - Bad: There is still no two-factor authentication. ADR-0007 accepted this for
   `localhost`. For a family server, the private network, TLS and the lockout
   compensate. This is the reason that Feljosit must not be on the open internet.

@@ -1,16 +1,19 @@
 //! The HTTP server (HTTP/1.1 with the standard library).
 //!
-//! The application is for one person on the same computer (ADR-0002). Thus a small
-//! server is sufficient: one thread for each connection, one request for each
-//! connection and a limit for the number of connections. The server reads the complete
-//! request with size limits and time limits. Then [`App::handle`] makes the response.
-//! See ADR-0021.
+//! The application is for one person on the same computer, or for a family behind a
+//! TLS reverse proxy (ADR-0023). Thus a small server is sufficient: one thread for
+//! each connection, one request for each connection, a limit for the number of
+//! connections and a limit for each client. The server reads the complete request
+//! with size limits and time limits. Then [`App::handle`] makes the response.
+//! See ADR-0021 and ADR-0024.
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::IpAddr;
 use std::net::{TcpListener, TcpStream};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::{App, Request, Response};
@@ -19,12 +22,21 @@ use crate::shutdown::{Event, Stop};
 
 /// The maximum number of connections at the same time.
 const MAX_CONNECTIONS: usize = 64;
+/// The maximum number of connections from one client at the same time (ADR-0024).
+/// Thus one device cannot use all connections.
+const MAX_CONNECTIONS_PER_CLIENT: usize = 16;
 /// The maximum size of the request line and the headers together.
 const MAX_HEAD_BYTES: usize = 64 * 1024;
 /// The maximum number of header lines.
 const MAX_HEADERS: usize = 100;
 /// The time limit for one read or write operation on the connection.
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
+/// The time limit to receive the request line and the headers (ADR-0024). A slow
+/// client cannot keep a connection open with one byte in each `IO_TIMEOUT`.
+const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
+/// The time limit to receive the complete request, with the body. An upload of
+/// 10 MB in this time needs approximately 85 kB/s.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The maximum time to wait for the active connections after a stop signal.
 const STOP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -36,6 +48,7 @@ pub fn serve(app: Arc<App>, listener: TcpListener) -> io::Result<()> {
     let stop = Stop::install()?;
     stop.prepare(&listener)?;
     let active = Arc::new(AtomicUsize::new(0));
+    let clients = ClientCounts::default();
     loop {
         if stop.wait(&listener)? == Event::Stop {
             break;
@@ -51,16 +64,25 @@ pub fn serve(app: Arc<App>, listener: TcpListener) -> io::Result<()> {
                     continue;
                 }
             };
-        if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+        let peer = stream.peer_addr().ok().map(|a| a.ip());
+        let from_proxy =
+            peer.is_some_and(|ip| app.settings.trusted_proxies.iter().any(|net| net.contains(ip)));
+        // Behind a trusted proxy, the client is known only after the headers.
+        let client_guard = if from_proxy { None } else { clients.acquire(crate::net::client_key(peer)) };
+        if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS || (!from_proxy && client_guard.is_none())
+        {
             active.fetch_sub(1, Ordering::SeqCst);
-            let _ = write_response(&stream, &Response::text(503, "Too many connections"), false);
+            log::info(&format!("{} \"-\" 503", peer.map_or_else(|| "-".to_string(), |ip| ip.to_string())));
+            refuse(&stream);
             continue;
         }
         let app = app.clone();
         let guard = ActiveGuard(active.clone());
+        let clients = clients.clone();
         let spawned = std::thread::Builder::new().name("feljosit-connection".into()).spawn(move || {
             let _guard = guard;
-            handle_connection(&app, stream);
+            let connection = Connection { stream, peer, from_proxy, client_guard, clients };
+            handle_connection(&app, connection);
         });
         if let Err(error) = spawned {
             log::warning(&format!("Cannot start a thread for a connection: {error}"));
@@ -88,17 +110,112 @@ impl Drop for ActiveGuard {
     }
 }
 
+/// Send "503 Too many connections" from the accept loop. The short time limit keeps
+/// the accept loop free if the client does not read.
+fn refuse(stream: &TcpStream) {
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+    let _ = write_response(stream, &Response::text(503, "Too many connections"), false);
+}
+
+/// The number of connections of each client.
+#[derive(Clone, Default)]
+struct ClientCounts(Arc<Mutex<HashMap<String, usize>>>);
+
+impl ClientCounts {
+    /// Count one more connection of the client. `None` if the client has the maximum.
+    fn acquire(&self, key: String) -> Option<ClientGuard> {
+        let mut counts = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let count = counts.entry(key.clone()).or_insert(0);
+        if *count >= MAX_CONNECTIONS_PER_CLIENT {
+            return None;
+        }
+        *count += 1;
+        Some(ClientGuard { counts: self.0.clone(), key })
+    }
+}
+
+/// Decrease the number of connections of the client at the end of a connection.
+struct ClientGuard {
+    counts: Arc<Mutex<HashMap<String, usize>>>,
+    key: String,
+}
+
+impl Drop for ClientGuard {
+    fn drop(&mut self) {
+        let mut counts = self.counts.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(count) = counts.get_mut(&self.key) {
+            *count -= 1;
+            if *count == 0 {
+                counts.remove(&self.key);
+            }
+        }
+    }
+}
+
+/// An accepted connection.
+struct Connection {
+    stream: TcpStream,
+    peer: Option<IpAddr>,
+    /// The connection comes from a trusted reverse proxy.
+    from_proxy: bool,
+    /// The count of the client. For a proxy connection, it is set after the headers.
+    client_guard: Option<ClientGuard>,
+    clients: ClientCounts,
+}
+
 /// An error in the request. The server sends the status and closes the connection.
 struct BadRequest(u16, &'static str);
 
-fn handle_connection(app: &App, stream: TcpStream) {
-    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+/// The error for a failed read. A time limit gives "408 Request Timeout".
+fn read_error(error: &io::Error) -> BadRequest {
+    match error.kind() {
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => BadRequest(408, "Request Timeout"),
+        _ => BadRequest(400, "Bad Request"),
+    }
+}
+
+/// A reader with a time limit for the complete request, not only for one read.
+struct DeadlineReader<'a> {
+    stream: &'a TcpStream,
+    deadline: Instant,
+}
+
+impl Read for DeadlineReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "The time limit of the request is over."));
+        }
+        self.stream.set_read_timeout(Some(remaining.min(IO_TIMEOUT)))?;
+        let mut stream = self.stream;
+        stream.read(buf)
+    }
+}
+
+fn handle_connection(app: &App, mut connection: Connection) {
+    let stream = &connection.stream;
     let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
     let _ = stream.set_nodelay(true);
-    let peer_is_loopback = stream.peer_addr().is_ok_and(|a| a.ip().is_loopback());
-    let peer = stream.peer_addr().map_or_else(|_| "-".to_string(), |a| a.ip().to_string());
-    let mut reader = BufReader::new(&stream);
-    let (req, response) = match read_request(app, &mut reader, &stream, peer_is_loopback) {
+    let started = Instant::now();
+    let peer_is_loopback = connection.peer.is_some_and(|ip| ip.is_loopback());
+    // The address for the log. Behind a proxy, it is known after the headers.
+    let mut client = connection.peer;
+    let mut reader = BufReader::new(DeadlineReader { stream, deadline: started + HEAD_TIMEOUT });
+    let result = read_head(&mut reader, connection.peer, peer_is_loopback).and_then(|req| {
+        let Some(mut req) = req else { return Ok(None) };
+        client = app.client_address(&req);
+        if connection.from_proxy {
+            // The limit for each client also applies behind the proxy.
+            let key = crate::net::client_key(client);
+            connection.client_guard =
+                Some(connection.clients.acquire(key).ok_or(BadRequest(503, "Too many connections"))?);
+        }
+        reader.get_mut().deadline = started + REQUEST_TIMEOUT;
+        read_body(app, &mut reader, stream, &mut req)?;
+        Ok(Some(req))
+    });
+    let client = client.map_or_else(|| "-".to_string(), |ip| ip.to_string());
+    let (req, response) = match result {
         Ok(Some(req)) => {
             let response = run(app, &req);
             (req, response)
@@ -106,12 +223,13 @@ fn handle_connection(app: &App, stream: TcpStream) {
         // The client closed the connection before it sent a request.
         Ok(None) => return,
         Err(BadRequest(status, message)) => {
-            let _ = write_response(&stream, &Response::text(status, message), false);
+            log::info(&format!("{client} \"-\" {status}"));
+            let _ = write_response(stream, &Response::text(status, message), false);
             return;
         }
     };
-    log::info(&format!("{peer} \"{} {}\" {}", req.method, req.path, response.status));
-    let _ = write_response(&stream, &response, req.method == "HEAD");
+    log::info(&format!("{client} \"{} {}\" {}", req.method, req.path, response.status));
+    let _ = write_response(stream, &response, req.method == "HEAD");
 }
 
 /// Run the application. A panic in a handler gives the status 500. The other
@@ -130,11 +248,7 @@ fn run(app: &App, req: &Request) -> Response {
 fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, BadRequest> {
     let mut line = Vec::new();
     let limit = u64::try_from(*budget).unwrap_or(u64::MAX).saturating_add(1);
-    let count = reader
-        .by_ref()
-        .take(limit)
-        .read_until(b'\n', &mut line)
-        .map_err(|_| BadRequest(400, "Bad Request"))?;
+    let count = reader.by_ref().take(limit).read_until(b'\n', &mut line).map_err(|e| read_error(&e))?;
     if count == 0 {
         return Ok(None);
     }
@@ -151,11 +265,10 @@ fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<Str
     String::from_utf8(line).map(Some).map_err(|_| BadRequest(400, "Bad Request"))
 }
 
-/// Read a complete request. `Ok(None)` means that the client sent nothing.
-fn read_request(
-    app: &App,
+/// Read the request line and the headers. `Ok(None)` means that the client sent nothing.
+fn read_head(
     reader: &mut impl BufRead,
-    stream: &TcpStream,
+    peer: Option<IpAddr>,
     peer_is_loopback: bool,
 ) -> Result<Option<Request>, BadRequest> {
     let bad = || BadRequest(400, "Bad Request");
@@ -210,14 +323,25 @@ fn read_request(
         headers.push((name.to_ascii_lowercase(), value.trim_matches([' ', '\t']).to_string()));
     }
 
-    let mut req = Request {
+    Ok(Some(Request {
         method: method.to_string(),
         path: path.to_string(),
         query: query.to_string(),
         headers,
         body: Vec::new(),
         peer_is_loopback,
-    };
+        peer,
+    }))
+}
+
+/// Read the body of the request (`Content-Length`).
+fn read_body(
+    app: &App,
+    reader: &mut impl BufRead,
+    stream: &TcpStream,
+    req: &mut Request,
+) -> Result<(), BadRequest> {
+    let bad = || BadRequest(400, "Bad Request");
     // Browsers send forms with Content-Length. Refuse Transfer-Encoding: this also
     // prevents request smuggling through a reverse proxy.
     if req.header("transfer-encoding").is_some() {
@@ -237,7 +361,7 @@ fn read_request(
             match value.parse::<usize>() {
                 // App::handle refuses the request from the header. Do not read the body.
                 Ok(n) if n <= app.max_body_bytes() => n,
-                _ => return Ok(Some(req)),
+                _ => return Ok(()),
             }
         }
     };
@@ -246,9 +370,9 @@ fn read_request(
         writer.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").map_err(|_| bad())?;
     }
     let mut body = vec![0; length];
-    reader.read_exact(&mut body).map_err(|_| bad())?;
+    reader.read_exact(&mut body).map_err(|e| read_error(&e))?;
     req.body = body;
-    Ok(Some(req))
+    Ok(())
 }
 
 fn reason(status: u16) -> &'static str {
@@ -265,6 +389,7 @@ fn reason(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        408 => "Request Timeout",
         409 => "Conflict",
         413 => "Content Too Large",
         422 => "Unprocessable Content",
@@ -323,6 +448,51 @@ mod tests {
     #[test]
     fn reason_phrases() {
         assert_eq!(reason(303), "See Other");
+        assert_eq!(reason(408), "Request Timeout");
         assert_eq!(reason(299), "");
+    }
+
+    #[test]
+    fn a_slow_client_stops_at_the_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        // The client sends one byte each 50 ms. Each read is fast, but the head is never complete.
+        let client = std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(address).unwrap();
+            for byte in b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n".iter().cycle().take(200) {
+                if stream.write_all(&[*byte]).is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let (stream, _) = listener.accept().unwrap();
+        let started = Instant::now();
+        let mut reader = BufReader::new(DeadlineReader {
+            stream: &stream,
+            deadline: started + Duration::from_millis(400),
+        });
+        let result = read_head(&mut reader, None, false);
+        let elapsed = started.elapsed();
+        assert!(matches!(result, Err(BadRequest(408, _))));
+        assert!(elapsed >= Duration::from_millis(390), "{elapsed:?}");
+        assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
+        drop(reader);
+        drop(stream);
+        client.join().unwrap();
+    }
+
+    #[test]
+    fn the_connections_of_each_client_are_counted() {
+        let counts = ClientCounts::default();
+        let guards: Vec<ClientGuard> =
+            (0..MAX_CONNECTIONS_PER_CLIENT).map(|_| counts.acquire("192.168.1.66".into()).unwrap()).collect();
+        assert!(counts.acquire("192.168.1.66".into()).is_none());
+        // A different client is not affected.
+        let other = counts.acquire("192.168.1.20".into()).unwrap();
+        drop(guards);
+        assert!(counts.acquire("192.168.1.66".into()).is_some());
+        drop(other);
+        assert!(counts.0.lock().unwrap().is_empty(), "No entries without connections");
     }
 }

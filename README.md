@@ -91,10 +91,12 @@ the user `nonroot` (UID 65532). The database is in the volume `/data`.
    docker run --detach --name feljosit --publish 127.0.0.1:8765:8765 --volume feljosit-data:/data ghcr.io/nausicaea/feljosit:VERSION
    ```
 
-2. Add the first user. The command asks for a password:
+2. Add the first user. The command asks for a password. Add `--permanent` if it is
+   your own password. Without it, the password is temporary, and you must change it
+   at the first login:
 
    ```bash
-   docker exec -it feljosit feljosit create-user NAME
+   docker exec -it feljosit feljosit create-user --permanent NAME
    ```
 
 3. Open <http://127.0.0.1:8765> in the browser.
@@ -156,8 +158,8 @@ You can also use Feljosit in a terminal:
 | --- | --- |
 | `feljosit` | Start the server and open the browser. |
 | `feljosit serve` | Start the server. Add `--open` to open the browser, `--port 9000` for a different port. |
-| `feljosit create-user NAME` | Add a user. The command asks for a password (minimum 12 characters). |
-| `feljosit set-password NAME` | Set a new password. This also unlocks a locked user. |
+| `feljosit create-user NAME` | Add a user. The command asks for a temporary password (minimum 12 characters). The user must change it at the first login. Add `--permanent` if the password is not temporary. |
+| `feljosit set-password NAME` | Set a new temporary password. This also unlocks a locked user. Add `--permanent` if the password is not temporary. |
 | `feljosit migrate` | Upgrade the database schema. The server also does this when it starts. |
 | `feljosit --help` | Show all commands. |
 
@@ -172,6 +174,7 @@ Set these environment variables if necessary:
 | `FELJOSIT_PORT` | `8765` | Port of the server. |
 | `FELJOSIT_ALLOWED_HOSTS` | `127.0.0.1,localhost,::1` | Permitted values of the `Host` header. |
 | `FELJOSIT_SECURE_COOKIES` | `false` | Set to `true` behind a TLS reverse proxy. |
+| `FELJOSIT_TRUSTED_PROXIES` | (empty) | Addresses or networks of the reverse proxies, separated by commas (for example `172.30.87.1`). Only these can give the address of the client in `X-Forwarded-For` (see [ADR-0024](docs/adr/0024-limits-for-a-family-server.md)). |
 
 The default data directory:
 
@@ -192,6 +195,9 @@ file, the same passwords and the same import rules (see
 3. Start the new file. It finds the database of version 0.3.0 in
    `~/.local/share/feljosit`, also on Windows and macOS. If you used
    `FELJOSIT_DATA_DIR`, set it again.
+
+The new version upgrades the database schema. After the upgrade, version 0.3.0
+cannot open the database. To use version 0.3.0 again, use the backup.
 
 ## Backup
 

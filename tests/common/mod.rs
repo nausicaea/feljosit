@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+pub mod server;
+
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
@@ -117,7 +119,14 @@ impl TestApp {
     }
 
     pub fn client(&self) -> Client {
-        Client { app: self.app.clone(), cookies: Vec::new(), host: "127.0.0.1".into(), loopback: true }
+        Client {
+            app: self.app.clone(),
+            cookies: Vec::new(),
+            host: "127.0.0.1".into(),
+            loopback: true,
+            peer: Some("127.0.0.1".parse().unwrap()),
+            forwarded_for: None,
+        }
     }
 
     /// A client that is logged in as `username`, and its CSRF token.
@@ -198,6 +207,10 @@ pub struct Client {
     cookies: Vec<StoredCookie>,
     pub host: String,
     pub loopback: bool,
+    /// The address of the connection.
+    pub peer: Option<std::net::IpAddr>,
+    /// The value of `X-Forwarded-For`, as a reverse proxy sends it.
+    pub forwarded_for: Option<String>,
 }
 
 pub fn encode(pairs: &[(&str, &str)]) -> String {
@@ -248,6 +261,9 @@ impl Client {
         let target = target.split('#').next().unwrap();
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
         let mut all_headers: Vec<(String, String)> = vec![("host".into(), self.host.clone())];
+        if let Some(forwarded) = &self.forwarded_for {
+            all_headers.push(("x-forwarded-for".into(), forwarded.clone()));
+        }
         if let Some(cookie) = self.cookie_header(path) {
             all_headers.push(("cookie".into(), cookie));
         }
@@ -264,6 +280,7 @@ impl Client {
             headers: all_headers,
             body,
             peer_is_loopback: self.loopback,
+            peer: self.peer,
         };
         let response = self.app.handle(&request);
         self.store_cookies(&response);

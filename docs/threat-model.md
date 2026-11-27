@@ -46,8 +46,9 @@ not trust. The controls of this document are not sufficient for these cases.
 
 | Threat (STRIDE) | Example | Controls |
 | --- | --- | --- |
-| Spoofing | Password guessing from a device on the home network | Argon2id, lockout for 15 minutes after 5 failures, minimum length 12. No access from the internet (operator responsibility, ADR-0023). |
-| Spoofing | The operator knows the temporary password of a new user | The user changes the password at the first login (operator guide). |
+| Spoofing | Password guessing from a device on the home network | Argon2id, minimum length 12. A lock for 15 minutes after 5 failures from one client, and after 50 failures from all clients (ADR-0024). No access from the internet (operator responsibility, ADR-0023). |
+| Spoofing | The operator knows the temporary password of a new user | Passwords from the command line are temporary. The user must change the password before other pages open (ADR-0024). |
+| Spoofing | A device sends a false `X-Forwarded-For` header to avoid the limits | Feljosit reads the header only from `FELJOSIT_TRUSTED_PROXIES`, from the right. The values that the device adds to the left are ignored (ADR-0024). |
 | Spoofing | Session theft | Random tokens, only the hash in the database, `HttpOnly`, `SameSite=Strict`, expiry after 12 hours. On a family server: TLS, `Secure` and HSTS (`FELJOSIT_SECURE_COOKIES=true`). |
 | Spoofing | A device on the home network reads the password or the session cookie | TLS reverse proxy. Feljosit listens only on `127.0.0.1` behind the proxy. The application shows a warning for a different address. |
 | Spoofing | Somebody else adds the first user | Only while the database has no user, only from the same computer (ADR-0019). Behind a reverse proxy, only the operator can add users (command line). |
@@ -63,8 +64,8 @@ not trust. The controls of this document are not sufficient for these cases.
 | Information disclosure | A copy of the database file (for example a backup) | Encrypted backups (operator responsibility, see SECURITY.md and ADR-0015). |
 | Information disclosure | The operator reads the data of all users | Not prevented (ADR-0015). The users must trust the operator. A user who does not trust the operator uses a personal computer instance. |
 | Information disclosure | Error messages show data | Validation errors do not show the input. No debug mode. |
-| Denial of service | A device on the home network locks the account of a user with 5 wrong passwords | The lock stops after 15 minutes. The operator can unlock with `feljosit set-password`. See the residual risks. |
-| Denial of service | A device on the home network opens many slow connections | A maximum of 64 connections, a time limit of 30 seconds for each read and write. The TLS reverse proxy receives the connections first. See the residual risks. |
+| Denial of service | A device on the home network locks the account of a user with 5 wrong passwords | The lock is only for that device. The lock for all clients needs 50 failures (ADR-0024). The lock stops after 15 minutes. The operator can unlock with `feljosit set-password`. |
+| Denial of service | A device on the home network opens many slow connections | 10 seconds for the headers, 120 seconds for the complete request, a maximum of 16 connections for each client and 64 for all clients (ADR-0024). The TLS reverse proxy receives the connections first. |
 | Denial of service | "Billion laughs" or ZIP bomb | Entities refused, ZIP limits (10 MB for each file, 25 MB in total), upload limit of 10 MB (ADR-0014). |
 | Denial of service | A credit card CSV file with very many lines or very long fields | Limits of 100,000 lines and 1,000 characters for each field, upload limit of 10 MB (ADR-0017). |
 | Denial of service | A very large or deep XML tree, or very many attributes | A pre-scan applies the limits for the number of elements, the nesting depth and the attributes before the parse (ADR-0014, ADR-0018). |
@@ -81,15 +82,18 @@ not trust. The controls of this document are not sufficient for these cases.
 
 1. The database is not encrypted by the application (see ADR-0003 and ADR-0015).
 2. There is no two-factor authentication (see ADR-0007). On a family server, a
-   device on the home network can guess passwords. The lockout makes this slow.
-   This is a reason that Feljosit must not be on the open internet (ADR-0023).
-3. The lockout is for each username, not for each device. A device on the home
-   network can keep the account of a user locked.
-4. The HTTP server is small (ADR-0021). A device on the home network can use all
-   64 connections. A reverse proxy with connection limits decreases this risk.
-5. Malware that runs as the same user (or on the server) can read the database.
-6. The operator of an instance can read the data of all users of that instance.
+   device on the home network can guess passwords. The lock after 5 failures makes
+   this slow. This is a reason that Feljosit must not be on the open internet (ADR-0023).
+3. An attacker with 10 or more IPv4 addresses (or IPv6 /64 networks) can lock a user
+   for all clients for 15 minutes (ADR-0024).
+4. Without a correct `FELJOSIT_TRUSTED_PROXIES`, all devices behind the reverse
+   proxy have the same client key. Then one device can lock a user for all devices,
+   and the limit of 16 connections is for the proxy only. If the setting includes
+   untrusted devices, they can send a false address (ADR-0024).
+5. Four or more devices together can use all 64 connections. A reverse proxy with
+   connection limits decreases this risk.
+6. Malware that runs as the same user (or on the server) can read the database.
+7. The operator of an instance can read the data of all users of that instance.
    Users who do not trust the operator must use a separate instance (ADR-0015).
-7. The application does not force a new user to change the temporary password.
 8. The executables are not signed. A user must compare the checksum to detect a
    manipulated file (ADR-0018). The container image is signed (ADR-0022).

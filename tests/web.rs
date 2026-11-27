@@ -2,7 +2,9 @@
 
 mod common;
 
-use common::{FilePart, PASSWORD, TestApp, csrf_from, fixture, zip_files};
+use feljosit::services::users;
+
+use common::{Client, FilePart, PASSWORD, TestApp, csrf_from, fixture, zip_files};
 
 #[test]
 fn pages_need_login() {
@@ -35,6 +37,131 @@ fn login_wrong_password_and_lockout() {
         &[("username", "anna"), ("password", PASSWORD), ("csrf_token", &csrf_from(&page.text()))],
     );
     assert_eq!(response.status, 401); // Locked.
+}
+
+/// Log in from the client. Return the status of the login request.
+fn try_login(client: &mut Client, password: &str) -> u16 {
+    let page = client.get("/login");
+    let response = client.post_no_follow(
+        "/login",
+        &[("username", "anna"), ("password", password), ("csrf_token", &csrf_from(&page.text()))],
+    );
+    response.status
+}
+
+/// A client behind the reverse proxy 172.30.87.1, on the device `device`.
+fn via_proxy(test: &TestApp, device: &str) -> Client {
+    let mut client = test.client();
+    client.host = "budget.home.arpa".into();
+    client.loopback = false;
+    client.peer = Some("172.30.87.1".parse().unwrap());
+    client.forwarded_for = Some(device.into());
+    client
+}
+
+fn family_server() -> TestApp {
+    TestApp::with_settings(|settings| {
+        settings.allowed_hosts = vec!["budget.home.arpa".into()];
+        settings.trusted_proxies = feljosit::net::parse_networks("172.30.87.1").unwrap();
+    })
+}
+
+#[test]
+fn lockout_behind_a_proxy_is_for_one_device() {
+    let test = family_server();
+    test.create_user("anna");
+    let mut attacker = via_proxy(&test, "192.168.1.66");
+    for _ in 0..5 {
+        assert_eq!(try_login(&mut attacker, "wrong password"), 401);
+    }
+    assert_eq!(try_login(&mut attacker, PASSWORD), 401);
+    // The real user on a different device is not locked.
+    assert_eq!(try_login(&mut via_proxy(&test, "192.168.1.20"), PASSWORD), 303);
+}
+
+#[test]
+fn a_false_forwarded_for_header_does_not_change_the_client() {
+    let test = family_server();
+    test.create_user("anna");
+    // A device that connects directly (not through the proxy) sends a new false
+    // address for each attempt.
+    let mut attacker = test.client();
+    attacker.host = "budget.home.arpa".into();
+    attacker.loopback = false;
+    attacker.peer = Some("192.168.1.66".parse().unwrap());
+    for n in 0..5 {
+        attacker.forwarded_for = Some(format!("10.0.0.{n}"));
+        assert_eq!(try_login(&mut attacker, "wrong password"), 401);
+    }
+    attacker.forwarded_for = Some("10.0.0.99".into());
+    assert_eq!(try_login(&mut attacker, PASSWORD), 401);
+    // All failures are recorded for the real address, not for the false values.
+    assert_eq!(test.scalar::<i64>("SELECT count(*) FROM login_failures"), 1);
+    assert_eq!(test.scalar::<String>("SELECT client FROM login_failures"), "192.168.1.66");
+    // Behind the proxy, the device puts a false address to the left. The proxy adds
+    // the real address. Thus the device is still locked.
+    let mut proxied = via_proxy(&test, "10.0.0.98, 192.168.1.66");
+    assert_eq!(try_login(&mut proxied, PASSWORD), 401);
+    assert_eq!(try_login(&mut via_proxy(&test, "10.0.0.98, 192.168.1.20"), PASSWORD), 303);
+}
+
+#[test]
+fn temporary_password_must_be_changed() {
+    let test = TestApp::new();
+    let user = test.create_user("anna");
+    test.app.with_db(|conn| users::set_temporary_password(conn, user.id, true).unwrap());
+    let mut client = test.client();
+    let page = client.get("/login");
+    let response = client.post_no_follow(
+        "/login",
+        &[("username", "anna"), ("password", PASSWORD), ("csrf_token", &csrf_from(&page.text()))],
+    );
+    assert_eq!(response.location(), "/settings");
+    // The other pages are not available.
+    for path in ["/budget", "/accounts", "/transactions", "/import", "/reports"] {
+        assert_eq!(client.get_no_follow(path).location(), "/settings", "{path}");
+    }
+    let settings = client.get("/settings");
+    assert!(settings.text().contains("Your password is temporary"));
+    let token = csrf_from(&settings.text());
+    // The same password again is not a change.
+    client.post(
+        "/settings/password",
+        &[
+            ("csrf_token", &token),
+            ("current_password", PASSWORD),
+            ("new_password", PASSWORD),
+            ("new_password_repeat", PASSWORD),
+        ],
+    );
+    assert_eq!(client.get_no_follow("/budget").location(), "/settings");
+    let page = client.post(
+        "/settings/password",
+        &[
+            ("csrf_token", &token),
+            ("current_password", PASSWORD),
+            ("new_password", "my own new password"),
+            ("new_password_repeat", "my own new password"),
+        ],
+    );
+    assert!(page.text().contains("The password is changed"), "{}", page.text());
+    assert!(!page.text().contains("Your password is temporary"));
+    assert_eq!(client.get_no_follow("/budget").status, 200);
+}
+
+#[test]
+fn user_with_a_temporary_password_can_log_out() {
+    let test = TestApp::new();
+    let user = test.create_user("anna");
+    let (mut client, _) = {
+        // Log in first. Then the password becomes temporary (the operator resets it).
+        test.login("anna")
+    };
+    test.app.with_db(|conn| users::set_temporary_password(conn, user.id, true).unwrap());
+    let token = csrf_from(&client.get("/settings").text());
+    let response = client.post_no_follow("/logout", &[("csrf_token", &token)]);
+    assert_eq!(response.location(), "/login");
+    assert_eq!(client.get_no_follow("/settings").location(), "/login");
 }
 
 #[test]

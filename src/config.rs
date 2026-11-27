@@ -19,6 +19,8 @@ pub struct Settings {
     pub secure_cookies: bool,
     /// Host header values that the application accepts (DNS rebinding protection).
     pub allowed_hosts: Vec<String>,
+    /// Reverse proxies that can give the client address in `X-Forwarded-For`.
+    pub trusted_proxies: Vec<crate::net::IpNet>,
     pub session_lifetime_seconds: i64,
     pub max_upload_bytes: usize,
     pub budget_currency: String,
@@ -103,6 +105,7 @@ impl Settings {
             port: DEFAULT_PORT,
             secure_cookies: false,
             allowed_hosts: vec!["127.0.0.1".into(), "localhost".into(), "::1".into()],
+            trusted_proxies: Vec::new(),
             session_lifetime_seconds: 12 * 60 * 60,
             max_upload_bytes: 10 * 1024 * 1024,
             budget_currency: "CHF".into(),
@@ -132,6 +135,10 @@ impl Settings {
             settings.allowed_hosts =
                 hosts.split(',').map(str::trim).filter(|h| !h.is_empty()).map(str::to_string).collect();
         }
+        if let Some(proxies) = env.get("FELJOSIT_TRUSTED_PROXIES") {
+            settings.trusted_proxies =
+                crate::net::parse_networks(proxies).map_err(|e| format!("FELJOSIT_TRUSTED_PROXIES: {e}"))?;
+        }
         Ok(settings)
     }
 
@@ -151,6 +158,7 @@ mod tests {
             ("FELJOSIT_PORT", "9000"),
             ("FELJOSIT_SECURE_COOKIES", "TRUE"),
             ("FELJOSIT_ALLOWED_HOSTS", "budget.example, localhost ,"),
+            ("FELJOSIT_TRUSTED_PROXIES", "172.30.87.1, fd00::/8"),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -161,6 +169,7 @@ mod tests {
         assert!(settings.secure_cookies);
         assert_eq!(settings.allowed_hosts, vec!["budget.example", "localhost"]);
         assert_eq!(settings.host, "127.0.0.1");
+        assert_eq!(settings.trusted_proxies.len(), 2);
     }
 
     #[test]
@@ -169,6 +178,7 @@ mod tests {
         assert!(settings.data_dir.ends_with("feljosit"));
         assert!(!settings.secure_cookies);
         assert_eq!(settings.port, 8765);
+        assert!(settings.trusted_proxies.is_empty());
     }
 
     #[test]
@@ -183,6 +193,12 @@ mod tests {
         std::fs::write(new.join("feljosit.sqlite3"), b"").unwrap();
         assert_eq!(data_dir_with_legacy(new.clone(), Some(old)), new);
         std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn trusted_proxies_must_be_addresses() {
+        let env = HashMap::from([("FELJOSIT_TRUSTED_PROXIES".to_string(), "proxy.home".to_string())]);
+        assert!(Settings::from_map(&env).unwrap_err().contains("FELJOSIT_TRUSTED_PROXIES"));
     }
 
     #[test]

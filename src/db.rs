@@ -16,6 +16,7 @@ use crate::dates::{self, Date, Timestamp};
 const MIGRATIONS: &[(&str, &str)] = &[
     ("0001", include_str!("../migrations/0001_initial_schema.sql")),
     ("0002", include_str!("../migrations/0002_transfer_pairs.sql")),
+    ("0003", include_str!("../migrations/0003_login_limits.sql")),
 ];
 
 /// The format of a date-time value in the database (UTC, as SQLAlchemy writes it).
@@ -190,7 +191,7 @@ mod tests {
         let mut conn = open_in_memory().unwrap();
         migrate(&mut conn).unwrap();
         migrate(&mut conn).unwrap();
-        assert_eq!(current_revision(&conn).unwrap().as_deref(), Some("0002"));
+        assert_eq!(current_revision(&conn).unwrap().as_deref(), Some("0003"));
     }
 
     #[test]

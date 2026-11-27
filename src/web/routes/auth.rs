@@ -56,12 +56,13 @@ pub fn login(ctx: &mut Ctx<'_>) -> Result<Response> {
     if !form_token_ok(ctx, LOGIN_CSRF_COOKIE)? {
         return login_page(ctx, Some("The form expired. Try again."), 400);
     }
-    let Some(user) = users::authenticate(ctx.db, &username, &password)? else {
+    let Some(user) = users::authenticate(ctx.db, &username, &password, &ctx.client_key())? else {
         // The handler returns normally: the failed-login counter is kept.
         return login_page(ctx, Some("The username or the password is not correct."), 401);
     };
     let new = users::start_session(ctx.db, user.id, ctx.settings().session_lifetime_seconds)?;
-    let mut response = Response::redirect("/budget");
+    let target = if user.must_change_password { "/settings" } else { "/budget" };
+    let mut response = Response::redirect(target);
     ctx.session_cookie(&mut response, &new.token);
     response.delete_cookie(LOGIN_CSRF_COOKIE, "/login", ctx.settings().secure_cookies);
     Ok(response)
@@ -139,7 +140,8 @@ pub fn logout(ctx: &mut Ctx<'_>) -> Result<Response> {
 
 pub fn settings_page(ctx: &mut Ctx<'_>) -> Result<Response> {
     let auth = ctx.auth()?;
-    ctx.render(Some(&auth), "settings.html", 200, context! {})
+    let must_change = auth.user.must_change_password;
+    ctx.render(Some(&auth), "settings.html", 200, context! { must_change_password => must_change })
 }
 
 pub fn change_password(ctx: &mut Ctx<'_>) -> Result<Response> {
@@ -148,12 +150,16 @@ pub fn change_password(ctx: &mut Ctx<'_>) -> Result<Response> {
     let current = form.required("current_password", 1024)?;
     let new_password = form.required("new_password", 1024)?;
     let repeat = form.required("new_password_repeat", 1024)?;
-    if users::authenticate(ctx.db, &auth.user.username, &current)?.is_none() {
+    if users::authenticate(ctx.db, &auth.user.username, &current, &ctx.client_key())?.is_none() {
         ctx.flash(&auth, "The current password is not correct.", true)?;
         return redirect("/settings");
     }
     if new_password != repeat {
         ctx.flash(&auth, "The two new passwords are not the same.", true)?;
+        return redirect("/settings");
+    }
+    if new_password == current {
+        ctx.flash(&auth, "The new password must be different from the current password.", true)?;
         return redirect("/settings");
     }
     match users::change_password(ctx.db, auth.user.id, &new_password) {
