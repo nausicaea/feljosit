@@ -16,7 +16,10 @@ Read the [threat model](docs/threat-model.md) and
 [ADR-0007](docs/adr/0007-authentication-and-sessions.md).
 A summary:
 
-- The server listens only on `127.0.0.1`.
+- Two deployment models: the personal computer of the user, or a private family
+  server with an operator (ADR-0023). Feljosit is not designed for the open internet.
+- By default, the server listens only on `127.0.0.1`. On a family server, a TLS
+  reverse proxy is the only entry.
 - Passwords are hashed with Argon2id. Accounts are locked after 5 failed logins.
 - Sessions are kept on the server. The cookie is `HttpOnly` and `SameSite=Strict`.
 - All forms have CSRF tokens. The server checks the `Origin` and the `Host` headers.
@@ -30,15 +33,21 @@ A summary:
 
 ## Recommendations for operators
 
-1. Use full-disk encryption on the computer.
+For a family server, read the [operator guide](docs/operator-guide.md).
+
+1. Use full-disk encryption on the computer or the server.
 2. Keep the default address `127.0.0.1`.
-3. If other computers must connect, put a TLS reverse proxy in front of the server.
+3. If other devices must connect, put a TLS reverse proxy in front of the server.
    Then set `FELJOSIT_SECURE_COOKIES=true` and `FELJOSIT_ALLOWED_HOSTS`.
-4. Encrypt the backups.
-5. Update the application regularly.
-6. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.
-7. Verify the signature of the container image with `cosign verify` (see [README.md](README.md)).
+4. Do not make the server accessible from the internet. Use a VPN for access from
+   outside the home.
+5. Encrypt the backups.
+6. Update the application regularly.
+7. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.
+8. Verify the signature of the container image with `cosign verify` (see [README.md](README.md)).
    In a container, publish the port only on `127.0.0.1` of the host.
+9. Tell each user that you can read all data. Give each new user a temporary
+   password, and tell the user to change it at the first login.
 
 ## Code scanning results in the tests
 

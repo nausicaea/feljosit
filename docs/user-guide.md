@@ -22,6 +22,10 @@ The browser shows the accounts page. Only the first user can be added in the
 browser. To add more users, use the command `feljosit create-user NAME` in a
 terminal.
 
+On a family server, the operator adds your user and gives you a temporary
+password. Log in with it. Then change the password immediately (see
+"Procedure: change your password").
+
 ## Procedure: add your accounts
 
 1. Click "Accounts".
@@ -381,6 +385,10 @@ location), the shop has more than one row.
 All your other sessions close.
 
 ## Procedure: reset a forgotten password
+
+On a family server, ask the operator. The operator sets a temporary password.
+
+On your own computer:
 
 1. Open a terminal on the computer with the database.
 2. Go to the folder of the Feljosit file.

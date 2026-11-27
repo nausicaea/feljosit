@@ -4,7 +4,17 @@ Feljosit is a local-first personal budgeting application for the Swiss
 financial sector. It uses the envelope method of YNAB ("give every franc a job").
 It imports ISO 20022 camt.053 bank statements from Swiss banks.
 
-Your data stays on your computer. The application sends no data to a cloud service.
+Your data stays on your computer, or on the private server of your family. The
+application sends no data to a cloud service.
+
+You can use Feljosit in two ways:
+
+- On your own computer: start the file (see "Procedure: start Feljosit").
+- On a family server: one family member (the operator) hosts Feljosit in the home
+  network. The other family members use a browser. See the
+  [operator guide](docs/operator-guide.md).
+
+Feljosit is not designed for the open internet.
 
 > [!NOTE]
 > **Claude wrote this project almost entirely.** Claude is an AI model from Anthropic. Claude wrote
@@ -72,8 +82,8 @@ Each release also has a signed container image for Linux (x86-64 and ARM64):
 the user `nonroot` (UID 65532). The database is in the volume `/data`.
 
 > [!WARNING]
-> Publish the port only on `127.0.0.1` of the host. If other computers must connect,
-> use a TLS reverse proxy (see [SECURITY.md](SECURITY.md)).
+> Publish the port only on `127.0.0.1` of the host. If other devices must connect,
+> use a TLS reverse proxy (see the [operator guide](docs/operator-guide.md)).
 
 1. Start the container:
 
@@ -193,6 +203,7 @@ The database is one file: `feljosit.sqlite3` in the data directory.
 ## Documentation
 
 - [User guide](docs/user-guide.md)
+- [Operator guide for a family server](docs/operator-guide.md)
 - [Architecture decision records](docs/adr/README.md)
 - [Threat model](docs/threat-model.md)
 - [Security policy](SECURITY.md)
