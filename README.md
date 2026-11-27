@@ -4,7 +4,17 @@ Feljosit is a local-first personal budgeting application for the Swiss
 financial sector. It uses the envelope method of YNAB ("give every franc a job").
 It imports ISO 20022 camt.053 bank statements from Swiss banks.
 
-Your data stays on your computer. The application sends no data to a cloud service.
+Your data stays on your computer, or on the private server of your family. The
+application sends no data to a cloud service.
+
+You can use Feljosit in two ways:
+
+- On your own computer: start the file (see "Procedure: start Feljosit").
+- On a family server: one family member (the operator) hosts Feljosit in the home
+  network. The other family members use a browser. See the
+  [operator guide](docs/operator-guide.md).
+
+Feljosit is not designed for the open internet.
 
 > [!NOTE]
 > **Claude wrote this project almost entirely.** Claude is an AI model from Anthropic. Claude wrote
@@ -60,9 +70,76 @@ contains the web server, the database engine (SQLite) and all pages.
    - macOS and Linux: open a terminal in the folder and type the name of the file,
      for example `./feljosit-VERSION-macos-aarch64`.
 4. The browser opens <http://127.0.0.1:8765>. At the first start, add your user.
-5. To stop Feljosit, close its window or press Ctrl+C in the terminal.
+5. To stop Feljosit, close its window or press Ctrl+C in the terminal. On macOS and
+   Linux, the server also stops on the signal `SIGTERM`.
 
 For the next steps, read the [user guide](docs/user-guide.md).
+
+## Procedure: start Feljosit in a container
+
+Each release also has a signed container image for Linux (x86-64 and ARM64):
+`ghcr.io/nausicaea/feljosit`. The image has no shell. The application runs as
+the user `nonroot` (UID 65532). The database is in the volume `/data`.
+
+> [!WARNING]
+> Publish the port only on `127.0.0.1` of the host. If other devices must connect,
+> use a TLS reverse proxy (see the [operator guide](docs/operator-guide.md)).
+
+1. Start the container:
+
+   ```bash
+   docker run --detach --name feljosit --publish 127.0.0.1:8765:8765 --volume feljosit-data:/data ghcr.io/nausicaea/feljosit:VERSION
+   ```
+
+2. Add the first user. The command asks for a password. Add `--permanent` if it is
+   your own password. Without it, the password is temporary, and you must change it
+   at the first login:
+
+   ```bash
+   docker exec -it feljosit feljosit create-user --permanent NAME
+   ```
+
+3. Open <http://127.0.0.1:8765> in the browser.
+4. To stop the container, type `docker stop feljosit`.
+
+The browser cannot add the first user in a container (see
+[ADR-0022](docs/adr/0022-signed-container-image.md)). On `docker stop`, the server
+completes the open requests (maximum 5 seconds), closes the database and stops.
+
+With Docker Compose, use this file `compose.yaml`:
+
+```yaml
+services:
+  feljosit:
+    image: ghcr.io/nausicaea/feljosit:VERSION
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - feljosit-data:/data
+volumes:
+  feljosit-data:
+```
+
+### Procedure: verify the container image
+
+1. Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/).
+2. Verify the signature:
+
+   ```bash
+   cosign verify ghcr.io/nausicaea/feljosit:VERSION --certificate-identity-regexp '^https://github\.com/nausicaea/feljosit/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   ```
+
+3. Show the provenance and the SBOM:
+
+   ```bash
+   docker buildx imagetools inspect ghcr.io/nausicaea/feljosit:VERSION --format '{{ json .Provenance }}'
+   ```
+
+   ```bash
+   docker buildx imagetools inspect ghcr.io/nausicaea/feljosit:VERSION --format '{{ json .SBOM }}'
+   ```
+
+To build the image from the source code, type `docker build -t feljosit .`.
 
 The files are not signed. At the first start, the operating system shows a warning:
 
@@ -81,8 +158,8 @@ You can also use Feljosit in a terminal:
 | --- | --- |
 | `feljosit` | Start the server and open the browser. |
 | `feljosit serve` | Start the server. Add `--open` to open the browser, `--port 9000` for a different port. |
-| `feljosit create-user NAME` | Add a user. The command asks for a password (minimum 12 characters). |
-| `feljosit set-password NAME` | Set a new password. This also unlocks a locked user. |
+| `feljosit create-user NAME` | Add a user. The command asks for a temporary password (minimum 12 characters). The user must change it at the first login. Add `--permanent` if the password is not temporary. |
+| `feljosit set-password NAME` | Set a new temporary password. This also unlocks a locked user. Add `--permanent` if the password is not temporary. |
 | `feljosit migrate` | Upgrade the database schema. The server also does this when it starts. |
 | `feljosit --help` | Show all commands. |
 
@@ -97,6 +174,7 @@ Set these environment variables if necessary:
 | `FELJOSIT_PORT` | `8765` | Port of the server. |
 | `FELJOSIT_ALLOWED_HOSTS` | `127.0.0.1,localhost,::1` | Permitted values of the `Host` header. |
 | `FELJOSIT_SECURE_COOKIES` | `false` | Set to `true` behind a TLS reverse proxy. |
+| `FELJOSIT_TRUSTED_PROXIES` | (empty) | Addresses or networks of the reverse proxies, separated by commas (for example `172.30.87.1`). Only these can give the address of the client in `X-Forwarded-For` (see [ADR-0024](docs/adr/0024-limits-for-a-family-server.md)). |
 
 The default data directory:
 
@@ -118,6 +196,9 @@ file, the same passwords and the same import rules (see
    `~/.local/share/feljosit`, also on Windows and macOS. If you used
    `FELJOSIT_DATA_DIR`, set it again.
 
+The new version upgrades the database schema. After the upgrade, version 0.3.0
+cannot open the database. To use version 0.3.0 again, use the backup.
+
 ## Backup
 
 The database is one file: `feljosit.sqlite3` in the data directory.
@@ -128,6 +209,7 @@ The database is one file: `feljosit.sqlite3` in the data directory.
 ## Documentation
 
 - [User guide](docs/user-guide.md)
+- [Operator guide for a family server](docs/operator-guide.md)
 - [Architecture decision records](docs/adr/README.md)
 - [Threat model](docs/threat-model.md)
 - [Security policy](SECURITY.md)

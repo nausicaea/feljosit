@@ -18,6 +18,8 @@ pub struct Request {
     pub body: Vec<u8>,
     /// True if the client connects from the same computer.
     pub peer_is_loopback: bool,
+    /// The address of the connection (the client, or a reverse proxy).
+    pub peer: Option<std::net::IpAddr>,
 }
 
 impl Request {

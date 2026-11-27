@@ -20,7 +20,17 @@ Your goal: "Ready to Assign" is 0.00, and no category has a negative "Available"
 
 The browser shows the accounts page. Only the first user can be added in the
 browser. To add more users, use the command `feljosit create-user NAME` in a
-terminal.
+terminal. The password of the new user is temporary: the new user must change it
+at the first login.
+
+On a family server, the operator adds your user and gives you a temporary
+password:
+
+1. Log in with the temporary password. The settings page opens.
+2. Change the password (see "Procedure: change your password"). Use a different
+   password. Do not tell it to the operator.
+
+The other pages open only after the change.
 
 ## Procedure: add your accounts
 
@@ -382,9 +392,14 @@ All your other sessions close.
 
 ## Procedure: reset a forgotten password
 
+On a family server, ask the operator. The operator sets a temporary password.
+You must change it at the next login.
+
+On your own computer:
+
 1. Open a terminal on the computer with the database.
 2. Go to the folder of the Feljosit file.
-3. Type `./feljosit set-password USERNAME` (on Windows: `feljosit.exe set-password USERNAME`). Use the name of your Feljosit file.
+3. Type `./feljosit set-password --permanent USERNAME` (on Windows: `feljosit.exe set-password --permanent USERNAME`). Use the name of your Feljosit file.
 4. Type the new password two times.
 
 This command also unlocks a locked account.

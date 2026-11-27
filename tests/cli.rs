@@ -64,6 +64,32 @@ fn create_user_and_set_password() {
     assert_eq!(call(&["set-password", "nobody"], dir.path(), &[password, password]).code, 1);
 }
 
+/// True if the password of the user is temporary.
+fn temporary(dir: &std::path::Path, username: &str) -> bool {
+    let conn = rusqlite::Connection::open(dir.join("data").join("feljosit.sqlite3")).unwrap();
+    conn.query_row("SELECT must_change_password FROM users WHERE username = ?1", [username], |row| row.get(0))
+        .unwrap()
+}
+
+#[test]
+fn passwords_from_the_command_line_are_temporary() {
+    let dir = common::tempdir();
+    let password = "a long enough password";
+    let created = call(&["create-user", "anna"], dir.path(), &[password, password]);
+    assert!(created.out.contains("temporary"));
+    assert!(temporary(dir.path(), "anna"));
+    let permanent = call(&["create-user", "--permanent", "ben"], dir.path(), &[password, password]);
+    assert_eq!(permanent.code, 0, "{}", permanent.err);
+    assert!(!permanent.out.contains("temporary"));
+    assert!(!temporary(dir.path(), "ben"));
+    assert_eq!(call(&["set-password", "ben"], dir.path(), &[password, password]).code, 0);
+    assert!(temporary(dir.path(), "ben"));
+    assert_eq!(call(&["set-password", "ben", "--permanent"], dir.path(), &[password, password]).code, 0);
+    assert!(!temporary(dir.path(), "ben"));
+    assert_eq!(call(&["create-user", "--permanent"], dir.path(), &[]).code, 2);
+    assert_eq!(call(&["create-user", "a", "b"], dir.path(), &[]).code, 2);
+}
+
 #[test]
 fn password_mismatch() {
     let dir = common::tempdir();

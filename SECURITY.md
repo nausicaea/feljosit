@@ -16,8 +16,17 @@ Read the [threat model](docs/threat-model.md) and
 [ADR-0007](docs/adr/0007-authentication-and-sessions.md).
 A summary:
 
-- The server listens only on `127.0.0.1`.
-- Passwords are hashed with Argon2id. Accounts are locked after 5 failed logins.
+- Two deployment models: the personal computer of the user, or a private family
+  server with an operator (ADR-0023). Feljosit is not designed for the open internet.
+- By default, the server listens only on `127.0.0.1`. On a family server, a TLS
+  reverse proxy is the only entry.
+- Passwords are hashed with Argon2id. After 5 failed logins from one client, the
+  user is locked for that client. After 50 failed logins from all clients, the user
+  is locked for all clients (ADR-0024).
+- Passwords from the command line are temporary. The user must change them at the
+  first login (ADR-0024).
+- Each client can have a maximum of 16 connections. A request must arrive in
+  120 seconds, the headers in 10 seconds (ADR-0024).
 - Sessions are kept on the server. The cookie is `HttpOnly` and `SameSite=Strict`.
 - All forms have CSRF tokens. The server checks the `Origin` and the `Host` headers.
 - A strict Content Security Policy permits no inline scripts and no external sources.
@@ -30,13 +39,21 @@ A summary:
 
 ## Recommendations for operators
 
-1. Use full-disk encryption on the computer.
+For a family server, read the [operator guide](docs/operator-guide.md).
+
+1. Use full-disk encryption on the computer or the server.
 2. Keep the default address `127.0.0.1`.
-3. If other computers must connect, put a TLS reverse proxy in front of the server.
+3. If other devices must connect, put a TLS reverse proxy in front of the server.
    Then set `FELJOSIT_SECURE_COOKIES=true` and `FELJOSIT_ALLOWED_HOSTS`.
-4. Encrypt the backups.
-5. Update the application regularly.
-6. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.
+4. Do not make the server accessible from the internet. Use a VPN for access from
+   outside the home.
+5. Encrypt the backups.
+6. Update the application regularly.
+7. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.
+8. Verify the signature of the container image with `cosign verify` (see [README.md](README.md)).
+   In a container, publish the port only on `127.0.0.1` of the host.
+9. Tell each user that you can read all data.
+10. Behind a reverse proxy, set `FELJOSIT_TRUSTED_PROXIES` to the address of the proxy only.
 
 ## Code scanning results in the tests
 

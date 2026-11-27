@@ -121,10 +121,13 @@ pub struct User {
     pub password_hash: String,
     pub failed_logins: i64,
     pub locked_until: Option<String>,
+    /// The password is temporary. The user must change it before other pages open.
+    pub must_change_password: bool,
 }
 
 impl User {
-    pub const COLUMNS: &'static str = "id, username, password_hash, failed_logins, locked_until";
+    pub const COLUMNS: &'static str =
+        "id, username, password_hash, failed_logins, locked_until, must_change_password";
 
     pub fn from_row(row: &Row<'_>) -> rusqlite::Result<User> {
         Ok(User {
@@ -133,6 +136,7 @@ impl User {
             password_hash: row.get(2)?,
             failed_logins: row.get(3)?,
             locked_until: row.get(4)?,
+            must_change_password: row.get(5)?,
         })
     }
 

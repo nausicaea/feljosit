@@ -1,6 +1,6 @@
 # ADR-0007: Use local accounts and server-side sessions
 
-- Status: Accepted (the first user: see ADR-0019)
+- Status: Accepted (the first user: see ADR-0019; the risk without two-factor authentication on a family server: see ADR-0023; the lockout is superseded by ADR-0024)
 - Date: 2026-11-25
 
 ## Context

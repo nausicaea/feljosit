@@ -23,12 +23,12 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | ADR | Title | Status |
 | --- | --- | --- |
 | [0001](0001-record-architecture-decisions.md) | Record the architecture decisions | Accepted |
-| [0002](0002-local-first-web-application.md) | Use a local-first web application in Python | Accepted (stack superseded by ADR-0018) |
+| [0002](0002-local-first-web-application.md) | Use a local-first web application in Python | Accepted (stack superseded by ADR-0018, deployment model by ADR-0023) |
 | [0003](0003-sqlite-data-store.md) | Use SQLite as the data store | Accepted (Alembic superseded by ADR-0018) |
 | [0004](0004-money-representation.md) | Keep money as integer minor units | Accepted |
 | [0005](0005-camt053-parsing.md) | Parse camt.053 safely and for all versions | Accepted (ZIP limits superseded by ADR-0014, parser by ADR-0018) |
 | [0006](0006-import-deduplication.md) | Prevent duplicate transactions with fingerprints | Accepted |
-| [0007](0007-authentication-and-sessions.md) | Use local accounts and server-side sessions | Accepted (first user: ADR-0019) |
+| [0007](0007-authentication-and-sessions.md) | Use local accounts and server-side sessions | Accepted (first user: ADR-0019; family server: ADR-0023; lockout superseded by ADR-0024) |
 | [0008](0008-envelope-budgeting-rules.md) | Use the envelope budgeting rules of YNAB | Accepted |
 | [0009](0009-categorisation.md) | Categorise with rules and history, without regular expressions | Accepted |
 | [0010](0010-server-side-charts.md) | Make the charts on the server as SVG | Accepted |
@@ -43,3 +43,6 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0019](0019-first-user-in-the-browser.md) | Add the first user in the browser | Accepted |
 | [0020](0020-jiff-for-dates.md) | Use jiff for dates and times | Accepted |
 | [0021](0021-minimum-dependencies.md) | Use the minimum number of external libraries | Accepted |
+| [0022](0022-signed-container-image.md) | Publish a signed container image | Proposed |
+| [0023](0023-family-server.md) | Let an operator host Feljosit for a family on a private server | Proposed |
+| [0024](0024-limits-for-a-family-server.md) | Limit failed logins and connections for each client, and force a change of temporary passwords | Proposed |
