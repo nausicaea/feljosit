@@ -37,6 +37,8 @@ A summary:
 4. Encrypt the backups.
 5. Update the application regularly.
 6. Compare the checksum of a downloaded file with the file `SHA256SUMS` of the release.
+7. Verify the signature of the container image with `cosign verify` (see [README.md](README.md)).
+   In a container, publish the port only on `127.0.0.1` of the host.
 
 ## Code scanning results in the tests
 

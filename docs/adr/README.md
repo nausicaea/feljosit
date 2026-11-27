@@ -43,3 +43,4 @@ Then set the status of the old ADR to "Superseded by ADR-NNNN".
 | [0019](0019-first-user-in-the-browser.md) | Add the first user in the browser | Accepted |
 | [0020](0020-jiff-for-dates.md) | Use jiff for dates and times | Accepted |
 | [0021](0021-minimum-dependencies.md) | Use the minimum number of external libraries | Accepted |
+| [0022](0022-signed-container-image.md) | Publish a signed container image | Proposed |

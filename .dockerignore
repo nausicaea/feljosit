@@ -1,0 +1,12 @@
+# The build context contains only the files that the build needs.
+*
+!Cargo.toml
+!Cargo.lock
+!src/
+!migrations/
+!static/
+!templates/
+!UNLICENSE
+# Prebuilt executables from the release workflow (BINARY=prebuilt).
+!dist/linux-amd64/feljosit
+!dist/linux-arm64/feljosit

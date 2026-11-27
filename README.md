@@ -64,6 +64,71 @@ contains the web server, the database engine (SQLite) and all pages.
 
 For the next steps, read the [user guide](docs/user-guide.md).
 
+## Procedure: start Feljosit in a container
+
+Each release also has a signed container image for Linux (x86-64 and ARM64):
+`ghcr.io/nausicaea/feljosit`. The image has no shell. The application runs as
+the user `nonroot` (UID 65532). The database is in the volume `/data`.
+
+> [!WARNING]
+> Publish the port only on `127.0.0.1` of the host. If other computers must connect,
+> use a TLS reverse proxy (see [SECURITY.md](SECURITY.md)).
+
+1. Start the container:
+
+   ```bash
+   docker run --detach --init --name feljosit --publish 127.0.0.1:8765:8765 --volume feljosit-data:/data ghcr.io/nausicaea/feljosit:VERSION
+   ```
+
+2. Add the first user. The command asks for a password:
+
+   ```bash
+   docker exec -it feljosit feljosit create-user NAME
+   ```
+
+3. Open <http://127.0.0.1:8765> in the browser.
+4. To stop the container, type `docker stop feljosit`.
+
+The browser cannot add the first user in a container (see
+[ADR-0022](docs/adr/0022-signed-container-image.md)). The option `--init` lets
+`docker stop` stop the server immediately.
+
+With Docker Compose, use this file `compose.yaml`:
+
+```yaml
+services:
+  feljosit:
+    image: ghcr.io/nausicaea/feljosit:VERSION
+    init: true
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - feljosit-data:/data
+volumes:
+  feljosit-data:
+```
+
+### Procedure: verify the container image
+
+1. Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/).
+2. Verify the signature:
+
+   ```bash
+   cosign verify ghcr.io/nausicaea/feljosit:VERSION --certificate-identity-regexp '^https://github\.com/nausicaea/feljosit/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   ```
+
+3. Show the provenance and the SBOM:
+
+   ```bash
+   docker buildx imagetools inspect ghcr.io/nausicaea/feljosit:VERSION --format '{{ json .Provenance }}'
+   ```
+
+   ```bash
+   docker buildx imagetools inspect ghcr.io/nausicaea/feljosit:VERSION --format '{{ json .SBOM }}'
+   ```
+
+To build the image from the source code, type `docker build -t feljosit .`.
+
 The files are not signed. At the first start, the operating system shows a warning:
 
 - Windows (SmartScreen): click "More info", then "Run anyway".

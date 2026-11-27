@@ -51,7 +51,8 @@ Feljosit is written in Rust (see [ADR-0018](docs/adr/0018-one-executable-in-rust
    ```
 
 CI does the same checks on Linux, Windows and macOS. It also does
-`cargo audit` and CodeQL.
+`cargo audit` and CodeQL. It also builds the container image from the source code
+and tests it.
 
 ## Commit messages
 
@@ -91,6 +92,9 @@ already have it.
 
 4. The workflow `release.yml` builds the executables for Windows, macOS and Linux.
    It attaches them and the file `SHA256SUMS` to a GitHub release.
+5. The same workflow puts the Linux executables into a container image. It pushes
+   the image to `ghcr.io/nausicaea/feljosit` and signs it with cosign (see
+   [ADR-0022](docs/adr/0022-signed-container-image.md)).
 
 ## Rules
 

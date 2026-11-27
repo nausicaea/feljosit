@@ -29,6 +29,11 @@
       "groupName": "development dependencies"
     },
     {
+      "description": "Update the Rust toolchain and the Rust image of the Dockerfile together.",
+      "matchDepNames": ["rust", "docker.io/library/rust"],
+      "groupName": "Rust"
+    },
+    {
       "description": "Group the GitHub Actions.",
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions"
